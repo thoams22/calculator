@@ -1,6 +1,4 @@
-// logarithme root
 // factorial => Gamma function
-// trigonometrie
 // complex numbers
 // statistics
 // probability
@@ -37,14 +35,15 @@ fn main() {
     let tokenized = tokenization(&expression);
 
     match tokenized {
-        Ok(tokens) => {
-            println!("Tokenized form {:?}", tokens);
+        (Ok(tokens), history) => {
+            println!("history of tokenization {:?}", history);
+            println!("Evaluated form {:?}", tokens);
             let evaluated = evaluation(tokens);
             match evaluated {
-                Ok(result) => println!("Result is {}", result),
-                Err(error) => println!("Error in Evaluation {:?}", error),
+                Ok(result) => println!("Result is : {}", result),
+                Err(error) => println!("Error in Evaluation : {:?}", error),
             }
         }
-        Err(error) => println!("Error in tokenization {:?}", error),
+        (Err(error), history) => println!("Error in tokenization : {:?},\n history {:?}", error, history),
     }
 }
