@@ -1,15 +1,16 @@
-// factorial => Gamma function
-// complex numbers
+// Systeme équation
+// Polynome
+// Solve for a var
+// How to make derivate and integral
+// Differential equations
+// Complex numbers
+
+// laplace fourier and Z transform
 // statistics
 // probability
 // base conversion
 // boolean algebra
-// how to make derivate and integral
-// laplace fourier and Z transform
-// differential equations
-
-// find solution to expression
-// display in latex style
+// factorial => Gamma function
 
 use std::io;
 
