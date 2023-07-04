@@ -207,13 +207,13 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, TokenError>, 
                 '(' => {
                     parenthesis += 1;
                     if !current_function.is_empty() {
-                        match is_function(&current_function) {
-                            Ok(result) => {
-                                instruction_stack.push(Instruction::LeftParenthesis);
-                                instruction_stack.push(result);
-                                history.push(result);
-                                history.push(Instruction::LeftParenthesis);
-                            }
+                        // if function is preceded by minus
+                        if current_number == "-" {
+                            tokenized.push(Instruction::Number(-1.0));
+                            if let Some(last_instruction) = instruction_stack.last() {
+                                if precedence(last_instruction) >= 3 {
+                                    tokenized.push(instruction_stack.pop().unwrap());
+                                }
                             Err(error) => println!(
                                 "Error finding function : {:?} => {:?}",
                                 current_function, error
