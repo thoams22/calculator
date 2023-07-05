@@ -1,7 +1,6 @@
 #[derive(PartialEq, Clone, Debug)]
 pub enum TokenError {
     TokenNotSupported(char),
-    FunctionNotSupported,
     MissingParenthesis,
     BadMinusCase,
     BadFloatParsing,
@@ -49,20 +48,20 @@ fn precedence(token: &Instruction) -> u8 {
 }
 
 // function supported in Lowercase if in uppercase will not be detected as function but as variable
-fn is_function(token: &str) -> Result<Instruction, TokenError> {
+fn is_function(token: &str) -> Option<Instruction> {
     match token {
-        "ln(" => Ok(Instruction::Function(Function::Ln)),
-        "log2(" => Ok(Instruction::Function(Function::Log2)),
-        "log10(" => Ok(Instruction::Function(Function::Log10)),
-        "log(" => Ok(Instruction::Function(Function::Log)),
-        "sqrt(" => Ok(Instruction::Function(Function::Sqrt)),
-        "sin(" => Ok(Instruction::Function(Function::Sin)),
-        "cos(" => Ok(Instruction::Function(Function::Cos)),
-        "tan(" => Ok(Instruction::Function(Function::Tan)),
-        "asin(" => Ok(Instruction::Function(Function::Asin)),
-        "acos(" => Ok(Instruction::Function(Function::Acos)),
-        "atan(" => Ok(Instruction::Function(Function::Atan)),
-        _ => Err(TokenError::FunctionNotSupported),
+        "ln(" => Some(Instruction::Function(Function::Ln)),
+        "log2(" => Some(Instruction::Function(Function::Log2)),
+        "log10(" => Some(Instruction::Function(Function::Log10)),
+        "log(" => Some(Instruction::Function(Function::Log)),
+        "sqrt(" => Some(Instruction::Function(Function::Sqrt)),
+        "sin(" => Some(Instruction::Function(Function::Sin)),
+        "cos(" => Some(Instruction::Function(Function::Cos)),
+        "tan(" => Some(Instruction::Function(Function::Tan)),
+        "asin(" => Some(Instruction::Function(Function::Asin)),
+        "acos(" => Some(Instruction::Function(Function::Acos)),
+        "atan(" => Some(Instruction::Function(Function::Atan)),
+        _ => None,
     }
 }
 
@@ -73,8 +72,7 @@ fn try_parse_f64(
 ) -> Result<Vec<Instruction>, TokenError> {
     match current_number.parse::<f64>() {
         Ok(number) => {
-            let mut tokenized: Vec<Instruction> = Vec::new();
-            tokenized.push(Instruction::Number(number));
+            let mut tokenized: Vec<Instruction> = vec![Instruction::Number(number)];
             if Some(&Instruction::ImplicitMultiplication) == history.last() {
                 tokenized.push(instruction_stack.pop().unwrap());
             }
@@ -84,6 +82,94 @@ fn try_parse_f64(
         }
         Err(_) => return Err(TokenError::BadFloatParsing),
     }
+}
+
+fn try_parse_variable(
+    current_function: &mut String,
+    instruction_stack: &mut Vec<Instruction>,
+    history: &mut Vec<Instruction>,
+) -> Result<Vec<Instruction>, TokenError> {
+
+    let mut tokenized: Vec<Instruction> = Vec::new();
+    let binding = current_function.clone();
+
+    for token in binding.chars() {
+        // check if current_function is a function 
+        match is_function(&current_function) {
+            Some(result) => {
+                // check if implicit multiplication with last token
+                if let Some(last_history) = history.last() {
+                    match last_history {
+                        Instruction::Number(_)
+                        | Instruction::RightParenthesis
+                        | Instruction::Variable(_) => {
+                            // for laft to right order of operation
+                            if let Some(last_instruction) = instruction_stack.last() {
+                                if precedence(last_instruction) >= 3 {
+                                    tokenized.push(instruction_stack.pop().unwrap());
+                                }
+                            }
+                            instruction_stack.push(Instruction::Multiplication);
+                            history.push(Instruction::ImplicitMultiplication);
+                        }
+                        _ => {}
+                    }
+                }
+                // push parenthesis and function
+                instruction_stack.push(Instruction::LeftParenthesis);
+                instruction_stack.push(result);
+                history.push(result);
+                history.push(Instruction::LeftParenthesis);
+                // return because when funtion found we are a the end of current_function
+                return Ok(tokenized);
+            }
+            None => {}
+        }
+        match token {
+            '(' => {
+                // check for implicit multiplication
+                if let Some(Instruction::Variable(_)) = history.last() {
+                    if let Some(last_instruction) = instruction_stack.last() {
+                        if precedence(last_instruction) >= 3 {
+                            tokenized.push(instruction_stack.pop().unwrap());
+                        }
+                    }
+                    instruction_stack.push(Instruction::Multiplication);
+                    history.push(Instruction::ImplicitMultiplication);
+                }
+                // push parenthesis because we are a the end of current_function
+                instruction_stack.push(Instruction::LeftParenthesis);
+                history.push(Instruction::LeftParenthesis);
+            }
+            c if c.is_ascii_alphabetic() => {
+                // check for implicit multiplication
+                if let Some(last_history) = history.last() {
+                    match last_history {
+                        Instruction::Number(_)
+                        | Instruction::RightParenthesis
+                        | Instruction::Variable(_) => {
+                            if let Some(last_instruction) = instruction_stack.last() {
+                                if precedence(last_instruction) >= 3 {
+                                    tokenized.push(instruction_stack.pop().unwrap());
+                                }
+                            }
+                            instruction_stack.push(Instruction::Multiplication);
+                            history.push(Instruction::ImplicitMultiplication);
+                        }
+                        _ => {}
+                    }
+                }
+                // push the variable
+                tokenized.push(Instruction::Variable(c));
+                history.push(Instruction::Variable(c));
+            }
+            _ => return Err(TokenError::BadVariableParsing),
+        }
+        // remove the first char of current_function for the next is_function() check
+        current_function.remove(0);
+    }
+    current_function.clear();
+    Ok(tokenized)
 }
 
 pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, TokenError>, Vec<Instruction>) {
@@ -129,26 +215,24 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, TokenError>, 
                     Err(error) => return (Err(error), history),
                 }
             }
-            // check for implicit multiplication with number and parenthesis before it
-            if let Some(last_instruction) = history.last() {
-                match last_instruction {
-                    Instruction::Number(_) | Instruction::RightParenthesis => {
-                        if let Some(last_instruction) = instruction_stack.last() {
-                            if precedence(last_instruction) >= 3 {
-                                tokenized.push(instruction_stack.pop().unwrap());
-                            }
-                        }
-                        instruction_stack.push(Instruction::Multiplication);
-                        history.push(Instruction::ImplicitMultiplication);
-                    }
-                    _ => {}
-                }
-            }
             current_function.push(token);
         } else {
             // check if this was a number before and it is not yet push to tokenized
             if !current_number.is_empty() && current_number != "-" {
                 match try_parse_f64(&mut current_number, &mut instruction_stack, &mut history) {
+                    Ok(result) => {
+                        tokenized.extend(result);
+                    }
+                    Err(error) => return (Err(error), history),
+                }
+            }
+            // check for variables
+            if !current_function.is_empty() && token != '(' {
+                match try_parse_variable(
+                    &mut current_function,
+                    &mut instruction_stack,
+                    &mut history,
+                ) {
                     Ok(result) => {
                         tokenized.extend(result);
                     }
@@ -253,30 +337,34 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, TokenError>, 
                         }
                         // check if function is supported else trow error
                         current_function.push('(');
-                        match is_function(&current_function) {
+                        match try_parse_variable(
+                            &mut current_function,
+                            &mut instruction_stack,
+                            &mut history,
+                        ) {
                             Ok(result) => {
-                                instruction_stack.push(Instruction::LeftParenthesis);
-                                instruction_stack.push(result);
-                                history.push(result);
-                                history.push(Instruction::LeftParenthesis);
+                                tokenized.extend(result);
                             }
-                            Err(error) => println!(
-                                "Error finding function : {:?} => {:?}",
-                                current_function, error
-                            ),
+                            Err(error) => return (Err(error), history),
                         }
+
                         current_function.clear();
                         continue;
                     }
                     // if ( is preceded by a number add implicit multiplication
-                    else if let Some(Instruction::Number(_)) = history.last() {
-                        if let Some(last_instruction) = instruction_stack.last() {
-                            if precedence(last_instruction) >= 3 {
-                                tokenized.push(instruction_stack.pop().unwrap());
+                    else if let Some(last_history) = history.last() {
+                        match last_history {
+                            Instruction::Number(_) | Instruction::RightParenthesis => {
+                                if let Some(last_instruction) = instruction_stack.last() {
+                                    if precedence(last_instruction) >= 3 {
+                                        tokenized.push(instruction_stack.pop().unwrap());
+                                    }
+                                }
+                                instruction_stack.push(Instruction::Multiplication);
+                                history.push(Instruction::ImplicitMultiplication);
                             }
+                            _ => {}
                         }
-                        history.push(Instruction::ImplicitMultiplication);
-                        instruction_stack.push(Instruction::Multiplication);
                     }
                     instruction_stack.push(Instruction::LeftParenthesis);
                     history.push(Instruction::LeftParenthesis);
@@ -326,6 +414,16 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, TokenError>, 
     // if the last token is a number parse it or Error
     if !current_number.is_empty() {
         match try_parse_f64(&mut current_number, &mut instruction_stack, &mut history) {
+            Ok(result) => {
+                tokenized.extend(result);
+            }
+            Err(error) => return (Err(error), history),
+        }
+    }
+
+    // check for variables
+    if !current_function.is_empty() {
+        match try_parse_variable(&mut current_function, &mut instruction_stack, &mut history) {
             Ok(result) => {
                 tokenized.extend(result);
             }
@@ -649,6 +747,26 @@ mod tests {
             Err(TokenError::MissingParenthesis),
             result.0,
             "parenthesis 5,\n history = {:?}",
+            result.1
+        );
+
+        result = tokenization("(2*4+6)(2*4+6)");
+        assert_eq!(
+            Ok(vec![
+                Instruction::Number(2.0),
+                Instruction::Number(4.0),
+                Instruction::Multiplication,
+                Instruction::Number(6.0),
+                Instruction::Addition,
+                Instruction::Number(2.0),
+                Instruction::Number(4.0),
+                Instruction::Multiplication,
+                Instruction::Number(6.0),
+                Instruction::Addition,
+                Instruction::Multiplication,
+            ]),
+            result.0,
+            "parenthesis 6,\n history = {:?}",
             result.1
         );
     }
@@ -1092,6 +1210,19 @@ mod tests {
             "function 22,\n history = {:?}",
             result.1
         );
+
+        result = tokenization("2sqrt(4)");
+        assert_eq!(
+            Ok(vec![
+                Instruction::Number(2.0),
+                Instruction::Number(4.0),
+                Instruction::Function(Function::Sqrt),
+                Instruction::Multiplication,
+            ]),
+            result.0,
+            "function 23,\n history = {:?}",
+            result.1
+        );
     }
 
     #[test]
@@ -1156,7 +1287,7 @@ mod tests {
                 Instruction::Variable('A'),
                 Instruction::Multiplication,
                 Instruction::Number(5.0),
-                Instruction::Function(Function::Asin),
+                Instruction::Function(Function::Sin),
                 Instruction::Multiplication,
             ]),
             result.0,
@@ -1166,17 +1297,7 @@ mod tests {
 
         result = tokenization("2log5");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Variable('l'),
-                Instruction::Multiplication,
-                Instruction::Variable('o'),
-                Instruction::Multiplication,
-                Instruction::Variable('g'),
-                Instruction::Multiplication,
-                Instruction::Number(5.0),
-                Instruction::Multiplication,
-            ]),
+            Err(TokenError::BadVariableParsing),
             result.0,
             "variable 6, \n history = {:?}",
             result.1
@@ -1215,6 +1336,26 @@ mod tests {
             ]),
             result.0,
             "variable 9, \n history = {:?}",
+            result.1
+        );
+
+        result = tokenization("abc(abc)");
+        assert_eq!(
+            Ok(vec![
+                Instruction::Variable('a'),
+                Instruction::Variable('b'),
+                Instruction::Multiplication,
+                Instruction::Variable('c'),
+                Instruction::Multiplication,
+                Instruction::Variable('a'),
+                Instruction::Variable('b'),
+                Instruction::Multiplication,
+                Instruction::Variable('c'),
+                Instruction::Multiplication,
+                Instruction::Multiplication,
+            ]),
+            result.0,
+            "variable 10, \n history = {:?}",
             result.1
         );
     }
