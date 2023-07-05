@@ -78,9 +78,9 @@ fn try_parse_f64(
             }
             history.push(Instruction::Number(number));
             current_number.clear();
-            return Ok(tokenized);
+            Ok(tokenized)
         }
-        Err(_) => return Err(TokenError::BadFloatParsing),
+        Err(_) => Err(TokenError::BadFloatParsing),
     }
 }
 
@@ -95,8 +95,7 @@ fn try_parse_variable(
 
     for token in binding.chars() {
         // check if current_function is a function 
-        match is_function(&current_function) {
-            Some(result) => {
+        if let Some(result) = is_function(current_function) {
                 // check if implicit multiplication with last token
                 if let Some(last_history) = history.last() {
                     match last_history {
@@ -114,7 +113,6 @@ fn try_parse_variable(
                         }
                         _ => {}
                     }
-                }
                 // push parenthesis and function
                 instruction_stack.push(Instruction::LeftParenthesis);
                 instruction_stack.push(result);
@@ -123,7 +121,6 @@ fn try_parse_variable(
                 // return because when funtion found we are a the end of current_function
                 return Ok(tokenized);
             }
-            None => {}
         }
         match token {
             '(' => {
