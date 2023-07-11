@@ -1,3 +1,9 @@
+// TODO next functionality 
+
+// add a factorisor/reducer -> ab + cb = (a+b)c, (a+b)^2 = a^2 + 2ab + b^2
+// add a isolator only for one variables
+// add a sustitutor -> y^4 + 6y^2 + 2 = 0 -> x = y^2, x^2 + 6x + 2 = 0
+
 // Systeme équation
 // Polynome
 // Solve for a var
@@ -17,6 +23,7 @@ use std::io;
 use crate::evaluator::evaluation;
 use crate::tokenizer::tokenization;
 
+mod reducer;
 mod evaluator;
 mod tokenizer;
 
@@ -37,12 +44,12 @@ fn main() {
 
     match tokenized {
         (Ok(tokens), history) => {
-            println!("history of tokenization {:?}", history);
+            // println!("history of tokenization {:?}", history);
             println!("Evaluated form {:?}", tokens);
             let evaluated = evaluation(tokens);
             match evaluated {
                 Ok(result) => println!("Result is : {}", result),
-                Err(error) => println!("Error in Evaluation : {:?}", error),
+                Err(error) => println!("Error in Evaluation : {:?},\n history {:?}", error, history),
             }
         }
         (Err(error), history) => println!("Error in tokenization : {:?},\n history {:?}", error, history),

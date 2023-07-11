@@ -1,10 +1,15 @@
+use std::fmt::format;
+
 #[derive(PartialEq, Clone, Debug)]
-pub enum TokenError {
+pub enum CalcError {
     TokenNotSupported(char),
     MissingParenthesis,
     BadMinusCase,
     BadFloatParsing,
     BadVariableParsing,
+    InsufficientOperand,
+    InsufficientNumber,
+    UnevaluableToken,
 }
 
 #[derive(PartialEq, PartialOrd, Debug, Clone, Copy)]
@@ -69,7 +74,7 @@ fn try_parse_f64(
     current_number: &mut String,
     instruction_stack: &mut Vec<Instruction>,
     history: &mut Vec<Instruction>,
-) -> Result<Vec<Instruction>, TokenError> {
+) -> Result<Vec<Instruction>, CalcError> {
     match current_number.parse::<f64>() {
         Ok(number) => {
             let mut tokenized: Vec<Instruction> = vec![Instruction::Number(number)];
@@ -80,7 +85,7 @@ fn try_parse_f64(
             current_number.clear();
             Ok(tokenized)
         }
-        Err(_) => Err(TokenError::BadFloatParsing),
+        Err(_) => Err(CalcError::BadFloatParsing),
     }
 }
 
@@ -88,39 +93,39 @@ fn try_parse_variable(
     current_function: &mut String,
     instruction_stack: &mut Vec<Instruction>,
     history: &mut Vec<Instruction>,
-) -> Result<Vec<Instruction>, TokenError> {
-
+) -> Result<Vec<Instruction>, CalcError> {
     let mut tokenized: Vec<Instruction> = Vec::new();
     let binding = current_function.clone();
 
     for token in binding.chars() {
-        // check if current_function is a function 
+        // check if current_function is a function
         if let Some(result) = is_function(current_function) {
-                // check if implicit multiplication with last token
-                if let Some(last_history) = history.last() {
-                    match last_history {
-                        Instruction::Number(_)
-                        | Instruction::RightParenthesis
-                        | Instruction::Variable(_) => {
-                            // for laft to right order of operation
-                            if let Some(last_instruction) = instruction_stack.last() {
-                                if precedence(last_instruction) >= 3 {
-                                    tokenized.push(instruction_stack.pop().unwrap());
-                                }
+            println!("{:?}", current_function);
+            // check if implicit multiplication with last token
+            if let Some(last_history) = history.last() {
+                match last_history {
+                    Instruction::Number(_)
+                    | Instruction::RightParenthesis
+                    | Instruction::Variable(_) => {
+                        // for laft to right order of operation
+                        if let Some(last_instruction) = instruction_stack.last() {
+                            if precedence(last_instruction) >= 3 {
+                                tokenized.push(instruction_stack.pop().unwrap());
                             }
-                            instruction_stack.push(Instruction::Multiplication);
-                            history.push(Instruction::ImplicitMultiplication);
                         }
-                        _ => {}
+                        instruction_stack.push(Instruction::Multiplication);
+                        history.push(Instruction::ImplicitMultiplication);
                     }
-                // push parenthesis and function
-                instruction_stack.push(Instruction::LeftParenthesis);
-                instruction_stack.push(result);
-                history.push(result);
-                history.push(Instruction::LeftParenthesis);
-                // return because when funtion found we are a the end of current_function
-                return Ok(tokenized);
+                    _ => {}
+                }
             }
+            // push parenthesis and function
+            instruction_stack.push(Instruction::LeftParenthesis);
+            instruction_stack.push(result);
+            history.push(result);
+            history.push(Instruction::LeftParenthesis);
+            // return because when funtion found we are a the end of current_function
+            return Ok(tokenized);
         }
         match token {
             '(' => {
@@ -160,7 +165,7 @@ fn try_parse_variable(
                 tokenized.push(Instruction::Variable(c));
                 history.push(Instruction::Variable(c));
             }
-            _ => return Err(TokenError::BadVariableParsing),
+            _ => return Err(CalcError::BadVariableParsing),
         }
         // remove the first char of current_function for the next is_function() check
         current_function.remove(0);
@@ -169,7 +174,7 @@ fn try_parse_variable(
     Ok(tokenized)
 }
 
-pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, TokenError>, Vec<Instruction>) {
+pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, CalcError>, Vec<Instruction>) {
     // variable for the shunting-yard algorithm
     let mut tokenized: Vec<Instruction> = Vec::new();
     let mut instruction_stack: Vec<Instruction> = Vec::new();
@@ -256,6 +261,7 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, TokenError>, 
                     instruction_stack.push(Instruction::Multiplication);
                 }
                 '+' => {
+                    println!("{:?}",instruction_stack.last());
                     if let Some(last_instruction) = instruction_stack.last() {
                         if precedence(last_instruction) >= 2 {
                             tokenized.push(instruction_stack.pop().unwrap());
@@ -303,7 +309,7 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, TokenError>, 
                             }
                         }
                         (_, _) => {
-                            return (Err(TokenError::BadMinusCase), history);
+                            return (Err(CalcError::BadMinusCase), history);
                         }
                     };
                     history.push(Instruction::Substraction);
@@ -379,7 +385,7 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, TokenError>, 
                                 break;
                             }
                         } else {
-                            return (Err(TokenError::MissingParenthesis), history);
+                            return (Err(CalcError::MissingParenthesis), history);
                         }
                     }
                 }
@@ -403,7 +409,7 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, TokenError>, 
                 '\r' | '\n' => break,
                 ' ' => continue, // ignore space
                 // in case of a char like # that as no utility
-                _ => return (Err(TokenError::TokenNotSupported(token)), history),
+                _ => return (Err(CalcError::TokenNotSupported(token)), history),
             }
         }
     }
@@ -430,7 +436,7 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, TokenError>, 
 
     // check if there was a pair number of parenthesis or Error
     if parenthesis != 0 {
-        return (Err(TokenError::MissingParenthesis), history);
+        return (Err(CalcError::MissingParenthesis), history);
     }
 
     // pop instruction_stack in tokenized if ther was Operation left inside
@@ -439,14 +445,103 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, TokenError>, 
     (Ok(tokenized), history)
 }
 
-// test mostly for when i add a functionnality to see if it break something
+pub fn untokenization(tokens: Vec<Instruction>) -> Result<String, CalcError> {
+    let mut stack = Vec::new();
+    let mut untokenized = String::new();
+
+    for token in tokens {
+        match token {
+            Instruction::Number(number) => stack.push(number),
+            Instruction::Addition => {
+                let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                untokenized += &format!("{}+{}", x, y);
+            }
+            Instruction::Substraction => {
+                let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                untokenized += &format!("{}-{}", x, y);
+            }
+            Instruction::Multiplication => {
+                let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                stack.push(x * y);
+            }
+            Instruction::Division => {
+                let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                stack.push(x / y);
+            }
+            Instruction::Exponentiation => {
+                let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                stack.push(x.powf(y));
+            }
+            Instruction::Function(Function::Ln) => {
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                stack.push(x.ln());
+            }
+            Instruction::Function(Function::Log10) => {
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                stack.push(x.log10());
+            }
+            Instruction::Function(Function::Log2) => {
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                stack.push(x.log2());
+            }
+            Instruction::Function(Function::Log) => {
+                let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                stack.push(y.log(x));
+            }
+            Instruction::Function(Function::Sqrt) => {
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                stack.push(x.sqrt());
+            }
+            Instruction::Function(Function::Sin) => {
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                stack.push(x.sin());
+            }
+            Instruction::Function(Function::Cos) => {
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                stack.push(x.cos());
+            }
+            Instruction::Function(Function::Tan) => {
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                stack.push(x.tan());
+            }
+            Instruction::Function(Function::Asin) => {
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                stack.push(x.asin());
+            }
+            Instruction::Function(Function::Acos) => {
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                stack.push(x.acos());
+            }
+            Instruction::Function(Function::Atan) => {
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                stack.push(x.atan());
+            }
+            _ => return Err(CalcError::UnevaluableToken),
+        }
+    }
+
+    let result = stack.pop();
+
+    if !stack.is_empty() | result.is_some() {
+        return Err(CalcError::InsufficientOperand);
+    }
+
+    Ok(untokenized)
+}
+
 #[cfg(test)]
-mod tests {
-    use crate::tokenizer::{tokenization, Function, Instruction, TokenError};
+mod tests_tokenization {
+    use crate::tokenizer::{tokenization, Function, Instruction, CalcError};
 
     #[test]
     fn blank() {
-        let result: (Result<Vec<Instruction>, TokenError>, Vec<Instruction>) =
+        let result: (Result<Vec<Instruction>, CalcError>, Vec<Instruction>) =
             tokenization(" 2* 3   / 4         +4 -9");
         assert_eq!(
             Ok(vec![
@@ -671,14 +766,14 @@ mod tests {
     fn unknown_token() {
         let mut result = tokenization("@");
         assert_eq!(
-            Err(TokenError::TokenNotSupported('@')),
+            Err(CalcError::TokenNotSupported('@')),
             result.0,
             "unknown_token 1,\n history = {:?}",
             result.1
         );
         result = tokenization("#");
         assert_eq!(
-            Err(TokenError::TokenNotSupported('#')),
+            Err(CalcError::TokenNotSupported('#')),
             result.0,
             "unknown_token 2,\n history = {:?}",
             result.1
@@ -734,14 +829,14 @@ mod tests {
         );
         result = tokenization("2*(4+6");
         assert_eq!(
-            Err(TokenError::MissingParenthesis),
+            Err(CalcError::MissingParenthesis),
             result.0,
             "parenthesis 4,\n history = {:?}",
             result.1
         );
         result = tokenization("2*4+6)");
         assert_eq!(
-            Err(TokenError::MissingParenthesis),
+            Err(CalcError::MissingParenthesis),
             result.0,
             "parenthesis 5,\n history = {:?}",
             result.1
@@ -1294,7 +1389,7 @@ mod tests {
 
         result = tokenization("2log5");
         assert_eq!(
-            Err(TokenError::BadVariableParsing),
+            Err(CalcError::BadVariableParsing),
             result.0,
             "variable 6, \n history = {:?}",
             result.1
@@ -1302,7 +1397,7 @@ mod tests {
 
         result = tokenization("2a2b");
         assert_eq!(
-            Err(TokenError::BadVariableParsing),
+            Err(CalcError::BadVariableParsing),
             result.0,
             "variable 7, \n history = {:?}",
             result.1
@@ -1353,6 +1448,29 @@ mod tests {
             ]),
             result.0,
             "variable 10, \n history = {:?}",
+            result.1
+        );
+    }
+
+    #[test] 
+    fn te() {
+        let result = tokenization("16a^2+16a+4");
+        assert_eq!(
+            Ok(vec![
+                Instruction::Number(16.0),
+                Instruction::Variable('a'),
+                Instruction::Number(2.0),
+                Instruction::Exponentiation,
+                Instruction::Multiplication,
+                Instruction::Number(16.0),
+                Instruction::Variable('a'),
+                Instruction::Multiplication,
+                Instruction::Addition,
+                Instruction::Number(4.0),
+                Instruction::Addition,
+            ]),
+            result.0,
+            "\n history = {:?}",
             result.1
         );
     }

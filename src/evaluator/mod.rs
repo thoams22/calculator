@@ -1,116 +1,109 @@
-use crate::tokenizer::{Function, Instruction};
+use crate::tokenizer::{Function, Instruction, CalcError};
 
-#[derive(PartialEq, Clone, Debug)]
-pub enum EvalError {
-    InsufficientOperand,
-    InsufficientNumber,
-    UnevaluableToken,
-}
-
-pub fn evaluation(tokens: Vec<Instruction>) -> Result<f64, EvalError> {
+pub fn evaluation(tokens: Vec<Instruction>) -> Result<f64, CalcError> {
     let mut stack = Vec::new();
 
     for token in tokens {
         match token {
             Instruction::Number(number) => stack.push(number),
             Instruction::Addition => {
-                let y = stack.pop().ok_or(EvalError::InsufficientNumber)?;
-                let x = stack.pop().ok_or(EvalError::InsufficientNumber)?;
+                let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x + y);
             }
             Instruction::Substraction => {
-                let y = stack.pop().ok_or(EvalError::InsufficientNumber)?;
-                let x = stack.pop().ok_or(EvalError::InsufficientNumber)?;
+                let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x - y);
             }
             Instruction::Multiplication => {
-                let y = stack.pop().ok_or(EvalError::InsufficientNumber)?;
-                let x = stack.pop().ok_or(EvalError::InsufficientNumber)?;
+                let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x * y);
             }
             Instruction::Division => {
-                let y = stack.pop().ok_or(EvalError::InsufficientNumber)?;
-                let x = stack.pop().ok_or(EvalError::InsufficientNumber)?;
+                let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x / y);
             }
             Instruction::Exponentiation => {
-                let y = stack.pop().ok_or(EvalError::InsufficientNumber)?;
-                let x = stack.pop().ok_or(EvalError::InsufficientNumber)?;
+                let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.powf(y));
             }
             Instruction::Function(Function::Ln) => {
-                let x = stack.pop().ok_or(EvalError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.ln());
             }
             Instruction::Function(Function::Log10) => {
-                let x = stack.pop().ok_or(EvalError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.log10());
             }
             Instruction::Function(Function::Log2) => {
-                let x = stack.pop().ok_or(EvalError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.log2());
             }
             Instruction::Function(Function::Log) => {
-                let y = stack.pop().ok_or(EvalError::InsufficientNumber)?;
-                let x = stack.pop().ok_or(EvalError::InsufficientNumber)?;
+                let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(y.log(x));
             }
             Instruction::Function(Function::Sqrt) => {
-                let x = stack.pop().ok_or(EvalError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.sqrt());
             }
             Instruction::Function(Function::Sin) => {
-                let x = stack.pop().ok_or(EvalError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.sin());
             }
             Instruction::Function(Function::Cos) => {
-                let x = stack.pop().ok_or(EvalError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.cos());
             }
             Instruction::Function(Function::Tan) => {
-                let x = stack.pop().ok_or(EvalError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.tan());
             }
             Instruction::Function(Function::Asin) => {
-                let x = stack.pop().ok_or(EvalError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.asin());
             }
             Instruction::Function(Function::Acos) => {
-                let x = stack.pop().ok_or(EvalError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.acos());
             }
             Instruction::Function(Function::Atan) => {
-                let x = stack.pop().ok_or(EvalError::InsufficientNumber)?;
+                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.atan());
             }
-            _ => return Err(EvalError::UnevaluableToken),
+            _ => return Err(CalcError::UnevaluableToken),
         }
     }
 
     let result = stack.pop();
 
     if !stack.is_empty() {
-        return Err(EvalError::InsufficientOperand);
+        return Err(CalcError::InsufficientOperand);
     }
 
-    result.ok_or(EvalError::InsufficientOperand)
+    result.ok_or(CalcError::InsufficientOperand)
 }
 
 #[cfg(test)]
-mod tests {
-    use std::{f64::consts::FRAC_PI_2};
+mod tests_evaluation {
+    use std::{f64::consts::FRAC_PI_2, result};
 
     use crate::{
-        evaluator::{evaluation, EvalError},
+        evaluator::{evaluation, CalcError},
         tokenizer::{tokenization, Instruction},
     };
 
-    fn test_evaluate(expression: &str) -> (Result<f64, EvalError>, Vec<Instruction>) {
+    fn test_evaluate(expression: &str) -> (Result<f64, CalcError>, Vec<Instruction>) {
         match tokenization(&expression) {
             (Ok(result), history) => (evaluation(result), history),
             (Err(error), history) => {
                 println!("Error in tokenization {:?},\n history {:?}", error, history);
-                (Err(EvalError::UnevaluableToken), history)
+                (Err(CalcError::UnevaluableToken), history)
             }
         }
     }
@@ -118,7 +111,7 @@ mod tests {
     #[test]
     fn number() {
         assert_eq!(
-            Err(EvalError::InsufficientNumber),
+            Err(CalcError::InsufficientNumber),
             evaluation(vec![
                 Instruction::Number(22.0),
                 Instruction::Number(33.0),
@@ -127,11 +120,11 @@ mod tests {
             ])
         );
         assert_eq!(
-            Err(EvalError::InsufficientNumber),
+            Err(CalcError::InsufficientNumber),
             evaluation(vec![Instruction::Multiplication,])
         );
         assert_eq!(
-            Err(EvalError::InsufficientNumber),
+            Err(CalcError::InsufficientNumber),
             evaluation(vec![Instruction::Multiplication, Instruction::Addition])
         );
     }
@@ -139,14 +132,14 @@ mod tests {
     #[test]
     fn operand() {
         assert_eq!(
-            Err(EvalError::InsufficientOperand),
+            Err(CalcError::InsufficientOperand),
             evaluation(vec![Instruction::Number(22.0), Instruction::Number(33.0),])
         );
     }
 
     #[test]
     fn ok() {
-        let mut result: (Result<f64, EvalError>, Vec<Instruction>) = test_evaluate("22*45");
+        let mut result: (Result<f64, CalcError>, Vec<Instruction>) = test_evaluate("22*45");
         assert_eq!(Ok(990.0), result.0, "Ok 1,\n history = {:?}", result.1);
 
         result = test_evaluate("22+33*44");
@@ -201,5 +194,23 @@ mod tests {
 
         result = test_evaluate("sqrt(25)");
         assert_eq!(Ok(5.0), result.0, "Ok 16,\n history = {:?}", result.1);
+    }
+
+    #[test] 
+    fn te() {
+        let result = evaluation(vec![
+            Instruction::Number(16.0),
+            Instruction::Number(2.0),
+            Instruction::Number(2.0),
+            Instruction::Exponentiation,
+            Instruction::Multiplication,
+            Instruction::Number(16.0),
+            Instruction::Number(2.0),
+            Instruction::Multiplication,
+            Instruction::Addition,
+            Instruction::Number(4.0),
+            Instruction::Addition,
+        ]);
+        assert_eq!(Ok(100.0), result);
     }
 }
