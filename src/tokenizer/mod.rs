@@ -1,3 +1,5 @@
+use crate::expression::Functions;
+
 #[derive(PartialEq, Clone, Debug)]
 pub enum CalcError {
     TokenNotSupported(char),
@@ -10,42 +12,26 @@ pub enum CalcError {
     UnevaluableToken,
 }
 
-// Faire des structs pour chaque operation qui peuvent contenir des Expr des Num/Var ou des Expr
-
 #[derive(PartialEq, PartialOrd, Debug, Clone, Copy)]
 pub enum Instruction {
     LeftParenthesis,
-    Addition,
-    Substraction,
-    Multiplication,
     ImplicitMultiplication,
+    RightParenthesis,
+    Addition,
+    Subtraction,
+    Multiplication,
     Division,
     Exponentiation,
-    Function(Function),
-    RightParenthesis,
+    Function(Functions),
     Number(f64),
     Variable(char),
 }
 
-#[derive(PartialEq, PartialOrd, Debug, Clone, Copy)]
-pub enum Function {
-    Ln,
-    Log2,
-    Log10,
-    Log,
-    Sqrt,
-    Sin,
-    Cos,
-    Tan,
-    Asin,
-    Acos,
-    Atan,
-}
 
 // helper to respect left to right order of operation for operation of same precedence
 fn precedence(token: &Instruction) -> u8 {
     match token {
-        Instruction::Addition | Instruction::Substraction => 2,
+        Instruction::Addition | Instruction::Subtraction => 2,
         Instruction::Multiplication | Instruction::Division => 3,
         Instruction::Exponentiation => 4,
         _ => 0,
@@ -55,17 +41,17 @@ fn precedence(token: &Instruction) -> u8 {
 // function supported in Lowercase if in uppercase will not be detected as function but as variable
 fn is_function(token: &str) -> Option<Instruction> {
     match token {
-        "ln(" => Some(Instruction::Function(Function::Ln)),
-        "log2(" => Some(Instruction::Function(Function::Log2)),
-        "log10(" => Some(Instruction::Function(Function::Log10)),
-        "log(" => Some(Instruction::Function(Function::Log)),
-        "sqrt(" => Some(Instruction::Function(Function::Sqrt)),
-        "sin(" => Some(Instruction::Function(Function::Sin)),
-        "cos(" => Some(Instruction::Function(Function::Cos)),
-        "tan(" => Some(Instruction::Function(Function::Tan)),
-        "asin(" => Some(Instruction::Function(Function::Asin)),
-        "acos(" => Some(Instruction::Function(Function::Acos)),
-        "atan(" => Some(Instruction::Function(Function::Atan)),
+        "ln(" => Some(Instruction::Function(Functions::Ln)),
+        "log2(" => Some(Instruction::Function(Functions::Log2)),
+        "log10(" => Some(Instruction::Function(Functions::Log10)),
+        "log(" => Some(Instruction::Function(Functions::Log)),
+        "sqrt(" => Some(Instruction::Function(Functions::Sqrt)),
+        "sin(" => Some(Instruction::Function(Functions::Sin)),
+        "cos(" => Some(Instruction::Function(Functions::Cos)),
+        "tan(" => Some(Instruction::Function(Functions::Tan)),
+        "asin(" => Some(Instruction::Function(Functions::Asin)),
+        "acos(" => Some(Instruction::Function(Functions::Acos)),
+        "atan(" => Some(Instruction::Function(Functions::Atan)),
         _ => None,
     }
 }
@@ -321,15 +307,15 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, CalcError>, V
                                     break;
                                 }
                             }
-                            instruction_stack.push(Instruction::Substraction);
+                            instruction_stack.push(Instruction::Subtraction);
                         }
-                        (Some(Instruction::Substraction), Some(Instruction::Substraction)) => {
+                        (Some(Instruction::Subtraction), Some(Instruction::Subtraction)) => {
                             instruction_stack.pop();
                             instruction_stack.push(Instruction::Addition);
                         }
-                        (Some(Instruction::Substraction), Some(Instruction::Addition)) => {
+                        (Some(Instruction::Subtraction), Some(Instruction::Addition)) => {
                             instruction_stack.pop();
-                            instruction_stack.push(Instruction::Substraction);
+                            instruction_stack.push(Instruction::Subtraction);
                         }
                         (Some(Instruction::Division), _)
                         | (Some(Instruction::LeftParenthesis), _)
@@ -338,7 +324,7 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, CalcError>, V
                         | (Some(Instruction::Exponentiation), _) => {
                             current_number.push('-');
                         }
-                        (Some(Instruction::Substraction), _) => {
+                        (Some(Instruction::Subtraction), _) => {
                             if current_number.is_empty() {
                                 current_number.push('-');
                             } else {
@@ -349,7 +335,7 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, CalcError>, V
                             return (Err(CalcError::BadMinusCase), history);
                         }
                     };
-                    history.push(Instruction::Substraction);
+                    history.push(Instruction::Subtraction);
                 }
                 '^' => {
                     history.push(Instruction::Exponentiation);
@@ -502,7 +488,7 @@ pub fn untokenization(tokens: Vec<Instruction>) -> Result<String, CalcError> {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(format!("({x}+{y})"));
             }
-            Instruction::Substraction => {
+            Instruction::Subtraction => {
                 let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(format!("({x}-{y})"));
@@ -522,48 +508,48 @@ pub fn untokenization(tokens: Vec<Instruction>) -> Result<String, CalcError> {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(format!("({x}^{y})"));
             }
-            Instruction::Function(Function::Ln) => {
+            Instruction::Function(Functions::Ln) => {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(format!("ln({x})"));
             }
-            Instruction::Function(Function::Log10) => {
+            Instruction::Function(Functions::Log10) => {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(format!("log10({x})"));
             }
-            Instruction::Function(Function::Log2) => {
+            Instruction::Function(Functions::Log2) => {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(format!("log2({x})"));
             }
-            Instruction::Function(Function::Log) => {
+            Instruction::Function(Functions::Log) => {
                 let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(format!("log({x}, {y})"));
             }
-            Instruction::Function(Function::Sqrt) => {
+            Instruction::Function(Functions::Sqrt) => {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(format!("sqrt({x})"));
             }
-            Instruction::Function(Function::Sin) => {
+            Instruction::Function(Functions::Sin) => {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(format!("sin({x})"));
             }
-            Instruction::Function(Function::Cos) => {
+            Instruction::Function(Functions::Cos) => {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(format!("cos({x})"));
             }
-            Instruction::Function(Function::Tan) => {
+            Instruction::Function(Functions::Tan) => {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(format!("tan({x})"));
             }
-            Instruction::Function(Function::Asin) => {
+            Instruction::Function(Functions::Asin) => {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(format!("asin({x})"));
             }
-            Instruction::Function(Function::Acos) => {
+            Instruction::Function(Functions::Acos) => {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(format!("acos({x})"));
             }
-            Instruction::Function(Function::Atan) => {
+            Instruction::Function(Functions::Atan) => {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(format!("atan({x})"));
             }
@@ -592,7 +578,7 @@ pub fn untokenization(tokens: Vec<Instruction>) -> Result<String, CalcError> {
 
 #[cfg(test)]
 mod tests_tokenization {
-    use crate::tokenizer::{tokenization, CalcError, Function, Instruction};
+    use crate::tokenizer::{tokenization, CalcError, Functions, Instruction};
 
     #[test]
     fn blank() {
@@ -608,7 +594,7 @@ mod tests_tokenization {
                 Instruction::Number(4.0),
                 Instruction::Addition,
                 Instruction::Number(9.0),
-                Instruction::Substraction,
+                Instruction::Subtraction,
             ]),
             result.0,
             "blank 1,\n history = {:?}",
@@ -634,7 +620,7 @@ mod tests_tokenization {
             Ok(vec![
                 Instruction::Number(2.0),
                 Instruction::Number(4.0),
-                Instruction::Substraction,
+                Instruction::Subtraction,
             ]),
             result.0,
             "negative_number 2,\n history = {:?}",
@@ -645,7 +631,7 @@ mod tests_tokenization {
             Ok(vec![
                 Instruction::Number(-2.0),
                 Instruction::Number(4.0),
-                Instruction::Substraction,
+                Instruction::Subtraction,
             ]),
             result.0,
             "negative_number 3,\nhistory = {:?}",
@@ -700,7 +686,7 @@ mod tests_tokenization {
             Ok(vec![
                 Instruction::Number(-2.0),
                 Instruction::Number(4.0),
-                Instruction::Substraction,
+                Instruction::Subtraction,
             ]),
             result.0,
             "negative_number 8,\n history = {:?}",
@@ -769,7 +755,7 @@ mod tests_tokenization {
                 Instruction::Number(2.0),
                 Instruction::Division,
                 Instruction::Number(2.0),
-                Instruction::Substraction,
+                Instruction::Subtraction,
                 Instruction::Multiplication,
             ]),
             result.0,
@@ -809,7 +795,7 @@ mod tests_tokenization {
                 Instruction::Number(-4.0),
                 Instruction::Multiplication,
                 Instruction::Number(8.0),
-                Instruction::Substraction,
+                Instruction::Subtraction,
             ]),
             result.0,
             "negative_number 17,\n history = {:?}",
@@ -1071,8 +1057,8 @@ mod tests_tokenization {
             Ok(vec![
                 Instruction::Number(4.0),
                 Instruction::Number(3.0),
-                Instruction::Substraction,
-                Instruction::Function(Function::Ln),
+                Instruction::Subtraction,
+                Instruction::Function(Functions::Ln),
             ]),
             result.0,
             "function 1,\n history = {:?}",
@@ -1084,8 +1070,8 @@ mod tests_tokenization {
                 Instruction::Number(4.0),
                 Instruction::Number(4.0),
                 Instruction::Number(3.0),
-                Instruction::Substraction,
-                Instruction::Function(Function::Ln),
+                Instruction::Subtraction,
+                Instruction::Function(Functions::Ln),
                 Instruction::Multiplication
             ]),
             result.0,
@@ -1097,8 +1083,8 @@ mod tests_tokenization {
             Ok(vec![
                 Instruction::Number(4.0),
                 Instruction::Number(3.0),
-                Instruction::Substraction,
-                Instruction::Function(Function::Ln),
+                Instruction::Subtraction,
+                Instruction::Function(Functions::Ln),
                 Instruction::Number(4.0),
                 Instruction::Multiplication,
             ]),
@@ -1112,14 +1098,14 @@ mod tests_tokenization {
             Ok(vec![
                 Instruction::Number(4.0),
                 Instruction::Number(3.0),
-                Instruction::Substraction,
-                Instruction::Function(Function::Ln),
+                Instruction::Subtraction,
+                Instruction::Function(Functions::Ln),
                 Instruction::Number(4.0),
                 Instruction::Multiplication,
                 Instruction::Number(8.0),
                 Instruction::Number(5.0),
-                Instruction::Substraction,
-                Instruction::Function(Function::Ln),
+                Instruction::Subtraction,
+                Instruction::Function(Functions::Ln),
                 Instruction::Multiplication
             ]),
             result.0,
@@ -1132,8 +1118,8 @@ mod tests_tokenization {
                 Instruction::Number(4.0),
                 Instruction::Number(4.0),
                 Instruction::Number(3.0),
-                Instruction::Substraction,
-                Instruction::Function(Function::Ln),
+                Instruction::Subtraction,
+                Instruction::Function(Functions::Ln),
                 Instruction::Multiplication,
                 Instruction::Number(8.0),
                 Instruction::Addition,
@@ -1148,7 +1134,7 @@ mod tests_tokenization {
         assert_eq!(
             Ok(vec![
                 Instruction::Number(4.0),
-                Instruction::Function(Function::Log2),
+                Instruction::Function(Functions::Log2),
             ]),
             result.0,
             "function 6,\n history = {:?}",
@@ -1158,7 +1144,7 @@ mod tests_tokenization {
         assert_eq!(
             Ok(vec![
                 Instruction::Number(4.0),
-                Instruction::Function(Function::Log10),
+                Instruction::Function(Functions::Log10),
             ]),
             result.0,
             "function 7,\n history = {:?}",
@@ -1169,7 +1155,7 @@ mod tests_tokenization {
             Ok(vec![
                 Instruction::Number(3.0),
                 Instruction::Number(4.0),
-                Instruction::Function(Function::Log),
+                Instruction::Function(Functions::Log),
             ]),
             result.0,
             "function 8,\n history = {:?}",
@@ -1179,7 +1165,7 @@ mod tests_tokenization {
         assert_eq!(
             Ok(vec![
                 Instruction::Number(0.0),
-                Instruction::Function(Function::Sin),
+                Instruction::Function(Functions::Sin),
             ]),
             result.0,
             "function 9,\n history = {:?}",
@@ -1189,7 +1175,7 @@ mod tests_tokenization {
         assert_eq!(
             Ok(vec![
                 Instruction::Number(0.0),
-                Instruction::Function(Function::Cos),
+                Instruction::Function(Functions::Cos),
             ]),
             result.0,
             "function 10,\n history = {:?}",
@@ -1199,7 +1185,7 @@ mod tests_tokenization {
         assert_eq!(
             Ok(vec![
                 Instruction::Number(0.0),
-                Instruction::Function(Function::Tan),
+                Instruction::Function(Functions::Tan),
             ]),
             result.0,
             "function 11,\n history = {:?}",
@@ -1209,7 +1195,7 @@ mod tests_tokenization {
         assert_eq!(
             Ok(vec![
                 Instruction::Number(4.0),
-                Instruction::Function(Function::Sqrt),
+                Instruction::Function(Functions::Sqrt),
             ]),
             result.0,
             "function 12,\n history = {:?}",
@@ -1219,7 +1205,7 @@ mod tests_tokenization {
         assert_eq!(
             Ok(vec![
                 Instruction::Number(0.0),
-                Instruction::Function(Function::Asin),
+                Instruction::Function(Functions::Asin),
             ]),
             result.0,
             "function 13,\n history = {:?}",
@@ -1229,7 +1215,7 @@ mod tests_tokenization {
         assert_eq!(
             Ok(vec![
                 Instruction::Number(0.0),
-                Instruction::Function(Function::Acos),
+                Instruction::Function(Functions::Acos),
             ]),
             result.0,
             "function 14,\n history = {:?}",
@@ -1239,7 +1225,7 @@ mod tests_tokenization {
         assert_eq!(
             Ok(vec![
                 Instruction::Number(0.0),
-                Instruction::Function(Function::Atan),
+                Instruction::Function(Functions::Atan),
             ]),
             result.0,
             "function 15,\n history = {:?}",
@@ -1251,7 +1237,7 @@ mod tests_tokenization {
             Ok(vec![
                 Instruction::Number(-1.0),
                 Instruction::Number(4.0),
-                Instruction::Function(Function::Sqrt),
+                Instruction::Function(Functions::Sqrt),
                 Instruction::Multiplication,
             ]),
             result.0,
@@ -1264,7 +1250,7 @@ mod tests_tokenization {
             Ok(vec![
                 Instruction::Number(-1.0),
                 Instruction::Number(4.0),
-                Instruction::Function(Function::Sqrt),
+                Instruction::Function(Functions::Sqrt),
                 Instruction::Multiplication,
             ]),
             result.0,
@@ -1279,7 +1265,7 @@ mod tests_tokenization {
                 Instruction::Number(-1.0),
                 Instruction::Multiplication,
                 Instruction::Number(4.0),
-                Instruction::Function(Function::Sqrt),
+                Instruction::Function(Functions::Sqrt),
                 Instruction::Multiplication,
             ]),
             result.0,
@@ -1294,7 +1280,7 @@ mod tests_tokenization {
                 Instruction::Number(-1.0),
                 Instruction::Multiplication,
                 Instruction::Number(4.0),
-                Instruction::Function(Function::Sqrt),
+                Instruction::Function(Functions::Sqrt),
                 Instruction::Multiplication,
                 Instruction::Number(2.0),
                 Instruction::Number(2.0),
@@ -1311,7 +1297,7 @@ mod tests_tokenization {
             Ok(vec![
                 Instruction::Number(2.0),
                 Instruction::Number(4.0),
-                Instruction::Function(Function::Sqrt),
+                Instruction::Function(Functions::Sqrt),
                 Instruction::Multiplication,
                 Instruction::Number(2.0),
                 Instruction::Number(2.0),
@@ -1330,7 +1316,7 @@ mod tests_tokenization {
                 Instruction::Number(-1.0),
                 Instruction::Multiplication,
                 Instruction::Number(4.0),
-                Instruction::Function(Function::Sqrt),
+                Instruction::Function(Functions::Sqrt),
                 Instruction::Multiplication,
                 Instruction::Number(2.0),
                 Instruction::Number(-2.0),
@@ -1347,10 +1333,10 @@ mod tests_tokenization {
             Ok(vec![
                 Instruction::Number(2.0),
                 Instruction::Number(4.0),
-                Instruction::Function(Function::Sqrt),
+                Instruction::Function(Functions::Sqrt),
                 Instruction::Multiplication,
                 Instruction::Number(4.0),
-                Instruction::Function(Function::Sqrt),
+                Instruction::Function(Functions::Sqrt),
                 Instruction::Multiplication,
             ]),
             result.0,
@@ -1363,7 +1349,7 @@ mod tests_tokenization {
             Ok(vec![
                 Instruction::Number(2.0),
                 Instruction::Number(4.0),
-                Instruction::Function(Function::Sqrt),
+                Instruction::Function(Functions::Sqrt),
                 Instruction::Multiplication,
             ]),
             result.0,
@@ -1376,7 +1362,7 @@ mod tests_tokenization {
             Ok(vec![
                 Instruction::Number(-1.0),
                 Instruction::Number(4.0),
-                Instruction::Function(Function::Sqrt),
+                Instruction::Function(Functions::Sqrt),
                 Instruction::Multiplication,
             ]),
             result.0,
@@ -1432,7 +1418,7 @@ mod tests_tokenization {
             Ok(vec![
                 Instruction::Number(2.0),
                 Instruction::Number(5.0),
-                Instruction::Function(Function::Asin),
+                Instruction::Function(Functions::Asin),
                 Instruction::Multiplication,
             ]),
             result.0,
@@ -1447,7 +1433,7 @@ mod tests_tokenization {
                 Instruction::Variable('A'),
                 Instruction::Multiplication,
                 Instruction::Number(5.0),
-                Instruction::Function(Function::Sin),
+                Instruction::Function(Functions::Sin),
                 Instruction::Multiplication,
             ]),
             result.0,
@@ -1524,7 +1510,7 @@ mod tests_tokenization {
             Ok(vec![
                 Instruction::Variable('a'),
                 Instruction::Variable('b'),
-                Instruction::Substraction,
+                Instruction::Subtraction,
                 Instruction::Variable('a'),
                 Instruction::Variable('b'),
                 Instruction::Addition,
@@ -1540,7 +1526,7 @@ mod tests_tokenization {
             Ok(vec![
                 Instruction::Variable('a'),
                 Instruction::Variable('b'),
-                Instruction::Substraction,
+                Instruction::Subtraction,
                 Instruction::Variable('a'),
                 Instruction::Number(-1.0),
                 Instruction::Variable('b'),
@@ -1562,6 +1548,40 @@ mod tests_tokenization {
             ]),
             result.0,
             "variable 13, \n history = {:?}",
+            result.1
+        );
+
+        result = tokenization("2*-a");
+        assert_eq!(
+            Ok(vec![
+                Instruction::Number(2.0),
+                Instruction::Number(-1.0),
+                Instruction::Multiplication,
+                Instruction::Variable('a'),
+                Instruction::Multiplication,
+            ]),
+            result.0,
+            "variable 14, \n history = {:?}",
+            result.1
+        );
+        
+        result = tokenization("a*-a+a*-a");
+        assert_eq!(
+            Ok(vec![
+                Instruction::Variable('a'),
+                Instruction::Number(-1.0),
+                Instruction::Multiplication,
+                Instruction::Variable('a'),
+                Instruction::Multiplication,
+                Instruction::Variable('a'),
+                Instruction::Number(-1.0),
+                Instruction::Multiplication,
+                Instruction::Variable('a'),
+                Instruction::Multiplication,
+                Instruction::Addition,
+            ]),
+            result.0,
+            "variable 15, \n history = {:?}",
             result.1
         );
     }
@@ -1665,15 +1685,15 @@ mod tests_tokenization {
             Ok(vec![
                 Instruction::Number(16.0),
                 Instruction::Number(4.0),
-                Instruction::Function(Function::Sqrt),
+                Instruction::Function(Functions::Sqrt),
                 Instruction::Multiplication,
                 Instruction::Number(8.0),
-                Instruction::Function(Function::Log2),
+                Instruction::Function(Functions::Log2),
                 Instruction::Multiplication,
                 Instruction::Number(8.0),
-                Instruction::Function(Function::Log2),
+                Instruction::Function(Functions::Log2),
                 Instruction::Number(4.0),
-                Instruction::Function(Function::Sqrt),
+                Instruction::Function(Functions::Sqrt),
                 Instruction::Exponentiation,
                 Instruction::Multiplication,
                 Instruction::Number(5.0),
@@ -1694,7 +1714,7 @@ mod tests_tokenization {
 
 #[cfg(test)]
 mod tests_untokenization {
-    use crate::tokenizer::{Function, Instruction, untokenization};
+    use crate::tokenizer::{Functions, Instruction, untokenization};
 
     #[test]
     fn ok() {
@@ -1730,7 +1750,7 @@ mod tests_untokenization {
         result = untokenization(vec![
             Instruction::Number(2.0),
             Instruction::Number(5.0),
-            Instruction::Function(Function::Asin),
+            Instruction::Function(Functions::Asin),
             Instruction::Multiplication,
         ]);
         assert_eq!(
@@ -1759,7 +1779,7 @@ mod tests_untokenization {
             Instruction::Number(-1.0),
             Instruction::Multiplication,
             Instruction::Number(4.0),
-            Instruction::Function(Function::Sqrt),
+            Instruction::Function(Functions::Sqrt),
             Instruction::Multiplication,
             Instruction::Number(2.0),
             Instruction::Number(-2.0),
@@ -1794,15 +1814,15 @@ mod tests_untokenization {
         result = untokenization(vec![
                 Instruction::Number(16.0),
                 Instruction::Number(4.0),
-                Instruction::Function(Function::Sqrt),
+                Instruction::Function(Functions::Sqrt),
                 Instruction::Multiplication,
                 Instruction::Number(8.0),
-                Instruction::Function(Function::Log2),
+                Instruction::Function(Functions::Log2),
                 Instruction::Multiplication,
                 Instruction::Number(8.0),
-                Instruction::Function(Function::Log2),
+                Instruction::Function(Functions::Log2),
                 Instruction::Number(4.0),
-                Instruction::Function(Function::Sqrt),
+                Instruction::Function(Functions::Sqrt),
                 Instruction::Exponentiation,
                 Instruction::Multiplication,
                 Instruction::Number(5.0),

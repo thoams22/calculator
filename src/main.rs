@@ -23,7 +23,6 @@ use std::io;
 use crate::evaluator::evaluation;
 use crate::tokenizer::tokenization;
 
-mod reducer;
 mod evaluator;
 mod tokenizer;
 mod expression;

@@ -1,4 +1,4 @@
-use crate::tokenizer::{Function, Instruction, CalcError};
+use crate::{tokenizer::{Instruction, CalcError}, expression::Functions};
 
 pub fn evaluation(tokens: Vec<Instruction>) -> Result<f64, CalcError> {
     let mut stack = Vec::new();
@@ -11,7 +11,7 @@ pub fn evaluation(tokens: Vec<Instruction>) -> Result<f64, CalcError> {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x + y);
             }
-            Instruction::Substraction => {
+            Instruction::Subtraction => {
                 let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x - y);
@@ -31,48 +31,48 @@ pub fn evaluation(tokens: Vec<Instruction>) -> Result<f64, CalcError> {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.powf(y));
             }
-            Instruction::Function(Function::Ln) => {
+            Instruction::Function(Functions::Ln) => {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.ln());
             }
-            Instruction::Function(Function::Log10) => {
+            Instruction::Function(Functions::Log10) => {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.log10());
             }
-            Instruction::Function(Function::Log2) => {
+            Instruction::Function(Functions::Log2) => {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.log2());
             }
-            Instruction::Function(Function::Log) => {
+            Instruction::Function(Functions::Log) => {
                 let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(y.log(x));
             }
-            Instruction::Function(Function::Sqrt) => {
+            Instruction::Function(Functions::Sqrt) => {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.sqrt());
             }
-            Instruction::Function(Function::Sin) => {
+            Instruction::Function(Functions::Sin) => {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.sin());
             }
-            Instruction::Function(Function::Cos) => {
+            Instruction::Function(Functions::Cos) => {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.cos());
             }
-            Instruction::Function(Function::Tan) => {
+            Instruction::Function(Functions::Tan) => {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.tan());
             }
-            Instruction::Function(Function::Asin) => {
+            Instruction::Function(Functions::Asin) => {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.asin());
             }
-            Instruction::Function(Function::Acos) => {
+            Instruction::Function(Functions::Acos) => {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.acos());
             }
-            Instruction::Function(Function::Atan) => {
+            Instruction::Function(Functions::Atan) => {
                 let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
                 stack.push(x.atan());
             }
