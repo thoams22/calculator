@@ -1,48 +1,27 @@
+use crate::tokenizer::CalcError;
+
 use self::addition::Addition;
 use self::division::Division;
 use self::exponentiation::Exponentiation;
+use self::function::Function;
 use self::multiplication::Multiplication;
-use self::subtraction::Subtraction;
-// use self::function::Function;
 
 mod addition;
 mod division;
 mod exponentiation;
+pub(crate) mod function;
 mod multiplication;
-mod subtraction;
-// mod function;
+mod math;
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum Expression {
     Number(f64),
     Variable(char),
     Addition(Box<Addition>),
-    Subtraction(Box<Subtraction>),
     Multiplication(Box<Multiplication>),
     Division(Box<Division>),
     Exponentiation(Box<Exponentiation>),
-    // Function(Box<Function>),
-}
-
-#[derive(PartialEq, PartialOrd, Debug, Clone, Copy)]
-pub enum Functions {
-    Ln,
-    Log2,
-    Log10,
-    Log,
-    Sqrt,
-    Sin,
-    Cos,
-    Tan,
-    Asin,
-    Acos,
-    Atan,
-}
-
-pub trait Expr {
-    fn simplify(self) -> Expression;
-    fn size(&self) -> u32;
-    fn get(&self, index: usize) -> Option<&Expression>;
+    Function(Box<Function>),
 }
 
 // constructeur
@@ -84,6 +63,50 @@ impl Expression {
     pub fn exponentiation(base: Expression, exponent: Expression) -> Expression {
         Expression::Exponentiation(Box::new(Exponentiation::new(base, exponent)))
     }
+
+    pub fn sqrt(expr: Expression) -> Expression {
+        Expression::Function(Box::new(Function::sqrt(expr)))
+    }
+
+    pub fn ln(expr: Expression) -> Expression {
+        Expression::Function(Box::new(Function::ln(expr)))
+    }
+
+    pub fn log2(expr: Expression) -> Expression {
+        Expression::Function(Box::new(Function::log2(expr)))
+    }
+
+    pub fn log10(expr: Expression) -> Expression {
+        Expression::Function(Box::new(Function::log10(expr)))
+    }
+
+    pub fn sin(expr: Expression) -> Expression {
+        Expression::Function(Box::new(Function::sin(expr)))
+    }
+
+    pub fn asin(expr: Expression) -> Expression {
+        Expression::Function(Box::new(Function::asin(expr)))
+    }
+
+    pub fn acos(expr: Expression) -> Expression {
+        Expression::Function(Box::new(Function::acos(expr)))
+    }
+
+    pub fn cos(expr: Expression) -> Expression {
+        Expression::Function(Box::new(Function::cos(expr)))
+    }
+
+    pub fn tan(expr: Expression) -> Expression {
+        Expression::Function(Box::new(Function::tan(expr)))
+    }
+
+    pub fn atan(expr: Expression) -> Expression {
+        Expression::Function(Box::new(Function::atan(expr)))
+    }
+
+    pub fn log(base: Expression, expr: Expression) -> Expression {
+        Expression::Function(Box::new(Function::log(base, expr)))
+    }
 }
 
 impl Expression {
@@ -92,23 +115,22 @@ impl Expression {
             Expression::Number(_) => self,
             Expression::Variable(_) => self,
             Expression::Addition(addition) => addition.simplify(),
-            Expression::Subtraction(subtraction) => subtraction.simplify(),
             Expression::Multiplication(multiplication) => multiplication.simplify(),
             Expression::Division(division) => division.simplify(),
             Expression::Exponentiation(exponentiation) => exponentiation.simplify(),
-            // Expression::Function(function) => function.simplify(),
+            Expression::Function(function) => function.simplify(),
         }
     }
 
-    pub fn size(&self) -> usize {
+    pub fn len(&self) -> usize {
         match self {
             Expression::Number(_) => 1,
             Expression::Variable(_) => 1,
-            Expression::Addition(addition) => addition.size(),
-            Expression::Subtraction(subtraction) => subtraction.size(),
-            Expression::Multiplication(multiplication) => multiplication.size(),
-            Expression::Division(division) => division.size(),
-            Expression::Exponentiation(exponentiation) => exponentiation.size(),
+            Expression::Addition(addition) => addition.len(),
+            Expression::Multiplication(multiplication) => multiplication.len(),
+            Expression::Division(division) => division.len(),
+            Expression::Exponentiation(exponentiation) => exponentiation.len(),
+            Expression::Function(function) => function.len(),
         }
     }
 
@@ -117,10 +139,10 @@ impl Expression {
             Expression::Number(number) => Some(Expression::Number(*number)),
             Expression::Variable(variable) => Some(Expression::Variable(*variable)),
             Expression::Addition(addition) => addition.get(index).cloned(),
-            Expression::Subtraction(subtraction) => subtraction.get(index).cloned(),
             Expression::Multiplication(multiplication) => multiplication.get(index).cloned(),
             Expression::Division(division) => division.get(index).cloned(),
             Expression::Exponentiation(exponentiation) => exponentiation.get(index).cloned(),
+            Expression::Function(function) => function.get(index).cloned(),
         }
     }
 
@@ -143,10 +165,34 @@ impl Expression {
                 false
             }
             Expression::Addition(addition) => addition.equal(other),
-            Expression::Subtraction(subtraction) => subtraction.equal(other),
             Expression::Multiplication(multiplication) => multiplication.equal(other),
             Expression::Division(division) => division.equal(other),
             Expression::Exponentiation(exponentiation) => exponentiation.equal(other),
+            Expression::Function(function) => function.equal(other),
+        }
+    }
+
+    pub fn evaluate(&self) -> Result<f64, CalcError> {
+        match self {
+            Expression::Number(number) => Ok(*number),
+            Expression::Variable(_) => Err(CalcError::UnevaluableToken),
+            Expression::Addition(addition) => addition.evaluate(),
+            Expression::Multiplication(multiplication) => multiplication.evaluate(),
+            Expression::Division(division) => division.evaluate(),
+            Expression::Exponentiation(exponentiation) => exponentiation.evaluate(),
+            Expression::Function(function) => function.evaluate(),
+        }
+    }
+
+    pub fn to_string(&self) -> Result<String, CalcError> {
+        match self {
+            Expression::Number(number) => Ok(number.to_string()),
+            Expression::Variable(variable) => Ok(variable.to_string()),
+            Expression::Addition(addition) => addition.to_string(),
+            Expression::Multiplication(multiplication) => multiplication.to_string(),
+            Expression::Division(division) => division.to_string(),
+            Expression::Exponentiation(exponentiation) => exponentiation.to_string(),
+            Expression::Function(function) => function.to_string(),
         }
     }
 }
@@ -155,7 +201,7 @@ impl Expression {
 mod tests_expression {
     use crate::expression::{
         addition::Addition, division::Division, exponentiation::Exponentiation,
-        multiplication::Multiplication, subtraction::Subtraction, Expression,
+        multiplication::Multiplication, Expression,
     };
 
     #[test]
@@ -169,10 +215,7 @@ mod tests_expression {
         result = Expression::subtraction(Expression::Variable('a'), Expression::Variable('b'));
         assert!(result.equal(&Expression::addition(
             Expression::Variable('a'),
-            Expression::multiplication(
-                Expression::Number(-1.0),
-                Expression::Variable('b'),
-            ),
+            Expression::multiplication(Expression::Number(-1.0), Expression::Variable('b'),),
         )));
 
         result = Expression::Addition(Box::new(Addition::new(
@@ -207,13 +250,10 @@ mod tests_expression {
     #[test]
     fn basic() {
         // 3 + 3 - 3
-        let mut result = Expression::Addition(Box::new(Addition::new(
+        let mut result = Expression::addition(
             Expression::Number(3.0),
-            Expression::Subtraction(Box::new(Subtraction::new(
-                Expression::Number(3.0),
-                Expression::Number(3.0),
-            ))),
-        )))
+            Expression::subtraction(Expression::Number(3.0), Expression::Number(3.0)),
+        )
         .simplify();
         assert_eq!(
             result,
@@ -258,16 +298,13 @@ mod tests_expression {
         );
 
         // a - b
-        result = Expression::Subtraction(Box::new(Subtraction::new(
-            Expression::Variable('a'),
-            Expression::Variable('b'),
-        )))
-        .simplify();
+        result = Expression::subtraction(Expression::Variable('a'), Expression::Variable('b'))
+            .simplify();
         assert!(
-            result.equal(&Expression::Subtraction(Box::new(Subtraction::new(
+            result.equal(&Expression::subtraction(
                 Expression::Variable('a'),
                 Expression::Variable('b'),
-            )))),
+            )),
             "basic 4\n result {:?}",
             result
         );
@@ -303,11 +340,8 @@ mod tests_expression {
         );
 
         // a - a
-        result = Expression::Subtraction(Box::new(Subtraction::new(
-            Expression::Variable('a'),
-            Expression::Variable('a'),
-        )))
-        .simplify();
+        result = Expression::subtraction(Expression::Variable('a'), Expression::Variable('a'))
+            .simplify();
         assert_eq!(
             result,
             Expression::Number(0.0),
@@ -430,6 +464,74 @@ mod tests_expression {
             "basic 14\n result {:?}",
             result
         );
+
+        // 1 ^ 0
+        result =
+            Expression::exponentiation(Expression::Number(1.0), Expression::Number(0.0)).simplify();
+        assert_eq!(
+            result,
+            Expression::Number(1.0),
+            "basic 15\n result {:?}",
+            result
+        );
+
+        // a ^ 0
+        result = Expression::exponentiation(Expression::Variable('a'), Expression::Number(0.0))
+            .simplify();
+        assert_eq!(
+            result,
+            Expression::Number(1.0),
+            "basic 16\n result {:?}",
+            result
+        );
+
+        // (a+b) ^ 0
+        result = Expression::exponentiation(
+            Expression::addition(Expression::Variable('a'), Expression::Variable('b')),
+            Expression::Number(0.0),
+        )
+        .simplify();
+        assert_eq!(
+            result,
+            Expression::Number(1.0),
+            "basic 17\n result {:?}",
+            result
+        );
+
+        // 1 ^ 1
+        result =
+            Expression::exponentiation(Expression::Number(1.0), Expression::Number(1.0)).simplify();
+        assert_eq!(
+            result,
+            Expression::Number(1.0),
+            "basic 18\n result {:?}",
+            result
+        );
+
+        // a ^ 1
+        result = Expression::exponentiation(Expression::Variable('a'), Expression::Number(1.0))
+            .simplify();
+        assert_eq!(
+            result,
+            Expression::Variable('a'),
+            "basic 19\n result {:?}",
+            result
+        );
+
+        // (a+b) ^ 1
+        result = Expression::exponentiation(
+            Expression::addition(Expression::Variable('a'), Expression::Variable('b')),
+            Expression::Number(1.0),
+        )
+        .simplify();
+        assert!(
+            result.equal(&Expression::addition(
+                Expression::Variable('a'),
+                Expression::Variable('b')
+            )),
+            "basic 20\n result {:?}",
+            result
+        );
     }
 
     #[test]
@@ -467,10 +569,7 @@ mod tests_expression {
                 Expression::Number(2.0),
                 Expression::Number(4.0),
             ))),
-            Expression::Subtraction(Box::new(Subtraction::new(
-                Expression::Number(4.0),
-                Expression::Number(2.0),
-            ))),
+            Expression::subtraction(Expression::Number(4.0), Expression::Number(2.0)),
         )))
         .simplify();
         assert_eq!(
@@ -482,14 +581,8 @@ mod tests_expression {
 
         // (a-a)+(a-a)
         result = Expression::Addition(Box::new(Addition::new(
-            Expression::Subtraction(Box::new(Subtraction::new(
-                Expression::Variable('a'),
-                Expression::Variable('a'),
-            ))),
-            Expression::Subtraction(Box::new(Subtraction::new(
-                Expression::Variable('a'),
-                Expression::Variable('a'),
-            ))),
+            Expression::subtraction(Expression::Variable('a'), Expression::Variable('a')),
+            Expression::subtraction(Expression::Variable('a'), Expression::Variable('a')),
         )))
         .simplify();
         assert_eq!(
@@ -598,6 +691,49 @@ mod tests_expression {
             "mulltiple_basic_add 7\n result {:?}",
             result
         );
+
+        // a^2 + a^2
+        result = Expression::Addition(Box::new(Addition::new(
+            Expression::exponentiation(Expression::Variable('a'), Expression::Number(2.0)),
+            Expression::exponentiation(Expression::Variable('a'), Expression::Number(2.0)),
+        )))
+        .simplify();
+        assert!(
+            result.equal(&Expression::Multiplication(Box::new(
+                Multiplication::from_vec(vec![
+                    Expression::Number(2.0),
+                    Expression::exponentiation(Expression::Variable('a'), Expression::Number(2.0)),
+                ])
+            ))),
+            "mulltiple_basic_add 8\n result {:?}",
+            result
+        );
+
+        // (a+b)^2
+        result = Expression::exponentiation(
+            Expression::addition(Expression::Variable('a'), Expression::Variable('b')),
+            Expression::Number(2.0),
+        )
+        .simplify();
+        assert!(
+            result.equal(&Expression::addition_from_vec(vec![
+                Expression::Exponentiation(Box::new(Exponentiation::new(
+                    Expression::Variable('a'),
+                    Expression::Number(2.0),
+                ))),
+                Expression::multiplication_from_vec(vec![
+                    Expression::Variable('b'),
+                    Expression::Variable('a'),
+                    Expression::Number(2.0)
+                ]),
+                Expression::Exponentiation(Box::new(Exponentiation::new(
+                    Expression::Variable('b'),
+                    Expression::Number(2.0),
+                )))
+            ])),
+            "mulltiple_basic_add 8\n result {:?}",
+            result
+        );
     }
 
     #[test]
@@ -635,14 +771,11 @@ mod tests_expression {
                 Expression::Variable('a'),
                 Expression::Variable('b'),
             ))),
-            Expression::Subtraction(Box::new(Subtraction::new(
-                Expression::Variable('a'),
-                Expression::Variable('b'),
-            ))),
+            Expression::subtraction(Expression::Variable('a'), Expression::Variable('b')),
         )))
         .simplify();
         assert!(
-            result.equal(&Expression::Subtraction(Box::new(Subtraction::new(
+            result.equal(&Expression::subtraction(
                 Expression::Exponentiation(Box::new(Exponentiation::new(
                     Expression::Variable('a'),
                     Expression::Number(2.0),
@@ -651,128 +784,158 @@ mod tests_expression {
                     Expression::Variable('b'),
                     Expression::Number(2.0),
                 )))
-            )))),
-            "mulltiple_basic_mult 2 \n result {:?}",
+            )),
+            "mulltiple_basic_mult 2 \n result : {:?}",
+            result
+        );
+
+        // 2*a*2*b
+        result = Expression::multiplication(
+            Expression::multiplication(Expression::Number(2.0), Expression::Variable('b')),
+            Expression::multiplication(Expression::Number(2.0), Expression::Variable('a')),
+        )
+        .simplify();
+        assert!(
+            result.equal(&Expression::multiplication_from_vec(vec![
+                Expression::Number(4.0),
+                Expression::Variable('b'),
+                Expression::Variable('a')
+            ])),
+            "mulltiple_basic_mult 3 \n result : {:?}",
+            result
+        );
+
+        // 2*(a+b)
+        result = Expression::multiplication(
+            Expression::Number(2.0),
+            Expression::addition(Expression::Variable('a'), Expression::Variable('b')),
+        )
+        .simplify();
+        assert!(
+            result.equal(&Expression::addition(
+                Expression::multiplication(Expression::Number(2.0), Expression::Variable('b'),),
+                Expression::multiplication(Expression::Number(2.0), Expression::Variable('a'),),
+            )),
+            "mulltiple_basic_mult 4 \n result : {:?}",
+            result
+        );
+
+        // a*(a+b)
+        result = Expression::multiplication(
+            Expression::Variable('a'),
+            Expression::addition(Expression::Variable('a'), Expression::Variable('b')),
+        )
+        .simplify();
+        assert!(
+            result.equal(&Expression::addition(
+                Expression::exponentiation(Expression::Variable('a'), Expression::Number(2.0)),
+                Expression::multiplication(Expression::Variable('a'), Expression::Variable('b'),),
+            )),
+            "mulltiple_basic_mult 5 \n result : {:?}",
+            result
+        );
+
+        // (a-b)*(a-b)
+        result = Expression::Multiplication(Box::new(Multiplication::new(
+            Expression::subtraction(Expression::Variable('a'), Expression::Variable('b')),
+            Expression::subtraction(Expression::Variable('a'), Expression::Variable('b')),
+        )))
+        .simplify();
+        assert!(
+            result.equal(&Expression::addition_from_vec(vec![
+                Expression::Exponentiation(Box::new(Exponentiation::new(
+                    Expression::Variable('a'),
+                    Expression::Number(2.0),
+                ))),
+                Expression::multiplication_from_vec(vec![
+                    Expression::Variable('b'),
+                    Expression::Variable('a'),
+                    Expression::Number(-2.0)
+                ]),
+                Expression::Exponentiation(Box::new(Exponentiation::new(
+                    Expression::Variable('b'),
+                    Expression::Number(2.0),
+                )))
+            ])),
+            "mulltiple_basic_mult 6 \n result : {:?}",
+            result
+        );
+
+        // (a+b)*(a+b)
+        result = Expression::Multiplication(Box::new(Multiplication::new(
+            Expression::addition(Expression::Variable('a'), Expression::Variable('b')),
+            Expression::addition(Expression::Variable('a'), Expression::Variable('b')),
+        )))
+        .simplify();
+        assert!(
+            result.equal(&Expression::addition_from_vec(vec![
+                Expression::Exponentiation(Box::new(Exponentiation::new(
+                    Expression::Variable('a'),
+                    Expression::Number(2.0),
+                ))),
+                Expression::multiplication_from_vec(vec![
+                    Expression::Variable('b'),
+                    Expression::Variable('a'),
+                    Expression::Number(2.0)
+                ]),
+                Expression::Exponentiation(Box::new(Exponentiation::new(
+                    Expression::Variable('b'),
+                    Expression::Number(2.0),
+                )))
+            ])),
+            "mulltiple_basic_mult 7 \n result : {:?}",
+            result
+        );
+
+        // a^2*a
+        result = Expression::multiplication(
+            Expression::Exponentiation(Box::new(Exponentiation::new(
+                Expression::Variable('a'),
+                Expression::Number(2.0),
+            ))),
+            Expression::Variable('a'),
+        )
+        .simplify();
+        assert!(
+            result.equal(&Expression::exponentiation(
+                Expression::Variable('a'),
+                Expression::Number(3.0),
+            )),
+            "mulltiple_basic_mult 8 \n result : {:?}",
+            result
+        );
+
+        // a^2*a^2
+        result = Expression::multiplication(
+            Expression::exponentiation(Expression::Variable('a'), Expression::Number(2.0)),
+            Expression::exponentiation(Expression::Variable('a'), Expression::Number(2.0)),
+        )
+        .simplify();
+        assert!(
+            result.equal(&Expression::exponentiation(
+                Expression::Variable('a'),
+                Expression::Number(4.0),
+            )),
+            "mulltiple_basic_mult 9 \n result : {:?}",
+            result
+        );
+
+        // a^2*(a+b)
+        result = Expression::multiplication(
+            Expression::exponentiation(Expression::Variable('a'), Expression::Number(2.0)),
+            Expression::addition(Expression::Variable('a'), Expression::Variable('b')),
+        )
+        .simplify();
+        assert!(
+            result.equal(&Expression::addition(
+                Expression::exponentiation(Expression::Variable('a'), Expression::Number(3.0)),
+                Expression::multiplication(
+                    Expression::exponentiation(Expression::Variable('a'), Expression::Number(2.0)),
+                    Expression::Variable('b')
+                )
+            )),
+            "mulltiple_basic_mult 10 \n result : {:?}",
             result
         );
     }
-
-    // #[test]
-    // fn diff_exp() {
-    //     let mut result = reduction(vec![
-    //         Instruction::Variable('a'),
-    //         Instruction::Variable('b'),
-    //         Instruction::Subtraction,
-    //         Instruction::Variable('a'),
-    //         Instruction::Variable('b'),
-    //         Instruction::Addition,
-    //         Instruction::Multiplication,
-    //     ]);
-    //     assert_eq!(
-    //         result,
-    //         vec![
-    //             Instruction::Variable('a'),
-    //             Instruction::Number(2.0),
-    //             Instruction::Exponentiation,
-    //             Instruction::Variable('b'),
-    //             Instruction::Number(2.0),
-    //             Instruction::Exponentiation,
-    //             Instruction::Subtraction,
-    //         ],
-    //         "diff_exp 1"
-    //     );
-
-    //     result = reduction(vec![
-    //         Instruction::Variable('a'),
-    //         Instruction::Variable('a'),
-    //         Instruction::Multiplication,
-    //         Instruction::Variable('b'),
-    //         Instruction::Subtraction,
-    //         Instruction::Variable('a'),
-    //         Instruction::Variable('a'),
-    //         Instruction::Multiplication,
-    //         Instruction::Variable('b'),
-    //         Instruction::Addition,
-    //         Instruction::Multiplication,
-    //     ]);
-    //     assert_eq!(
-    //         result,
-    //         vec![
-    //             Instruction::Variable('a'),
-    //             Instruction::Number(4.0),
-    //             Instruction::Exponentiation,
-    //             Instruction::Variable('b'),
-    //             Instruction::Number(2.0),
-    //             Instruction::Exponentiation,
-    //             Instruction::Subtraction,
-    //         ],
-    //         "diff_exp 2"
-    //     );
-
-    //     result = reduction(vec![
-    //         Instruction::Number(16.0),
-    //         Instruction::Number(2.0),
-    //         Instruction::Multiplication,
-    //         Instruction::Number(3.0),
-    //         Instruction::Multiplication,
-    //         Instruction::Number(3.0),
-    //         Instruction::Number(2.0),
-    //         Instruction::Exponentiation,
-    //         Instruction::Multiplication,
-    //         Instruction::Number(5.0),
-    //         Instruction::Number(4.0),
-    //         Instruction::Multiplication,
-    //         Instruction::Number(4.0),
-    //         Instruction::Multiplication,
-    //         Instruction::Addition,
-    //         Instruction::Number(5.0),
-    //         Instruction::Addition,
-    //     ]);
-    //     assert_eq!(result, vec![Instruction::Number(949.0),], "diff_exp 3");
-
-    //     result = reduction(vec![
-    //         Instruction::Number(16.0),
-    //         Instruction::Number(4.0),
-    //         Instruction::Function(Function::Sqrt),
-    //         Instruction::Multiplication,
-    //         Instruction::Number(8.0),
-    //         Instruction::Function(Function::Log2),
-    //         Instruction::Multiplication,
-    //         Instruction::Number(8.0),
-    //         Instruction::Function(Function::Log2),
-    //         Instruction::Number(4.0),
-    //         Instruction::Function(Function::Sqrt),
-    //         Instruction::Exponentiation,
-    //         Instruction::Multiplication,
-    //         Instruction::Number(5.0),
-    //         Instruction::Number(4.0),
-    //         Instruction::Multiplication,
-    //         Instruction::Number(4.0),
-    //         Instruction::Multiplication,
-    //         Instruction::Addition,
-    //         Instruction::Number(5.0),
-    //         Instruction::Addition,
-    //     ]);
-    //     assert_eq!(
-    //         result,
-    //         vec![
-    //             Instruction::Number(16.0),
-    //             Instruction::Number(4.0),
-    //             Instruction::Function(Function::Sqrt),
-    //             Instruction::Multiplication,
-    //             Instruction::Number(8.0),
-    //             Instruction::Function(Function::Log2),
-    //             Instruction::Multiplication,
-    //             Instruction::Number(8.0),
-    //             Instruction::Function(Function::Log2),
-    //             Instruction::Number(4.0),
-    //             Instruction::Function(Function::Sqrt),
-    //             Instruction::Exponentiation,
-    //             Instruction::Multiplication,
-    //             Instruction::Number(85.0),
-    //             Instruction::Addition,
-    //         ],
-    //         "diff_exp 4"
-    //     );
-    // }
 }

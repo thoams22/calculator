@@ -1,3 +1,5 @@
+use crate::tokenizer::CalcError;
+
 use super::Expression;
 
 #[derive(PartialEq, Debug, Clone)]
@@ -12,14 +14,16 @@ impl Division {
                 panic!("0 Division");
             }
         }
-        Self { sub_expr: [numerator, denominator ] }
+        Self {
+            sub_expr: [numerator, denominator],
+        }
     }
 
-    pub fn from_vec(sub_expr: [Expression;2]) -> Self {
+    pub fn from_vec(sub_expr: [Expression; 2]) -> Self {
         Self { sub_expr }
     }
 
-    pub fn size(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.sub_expr.len()
     }
     pub fn get(&self, index: usize) -> Option<&Expression> {
@@ -46,18 +50,12 @@ impl Division {
                 return false;
             }
 
-            if count == 2 {
-                return true;
-            } else {
-                return false;
-            }
+            return count == 2;
         }
         false
     }
 
-
     pub fn simplify(self) -> Expression {
-        
         let simplified_numerator = self.sub_expr[0].clone().simplify();
         let simplified_denominator = self.sub_expr[1].clone().simplify();
         match (&simplified_numerator, &simplified_denominator) {
@@ -79,5 +77,33 @@ impl Division {
                 simplified_denominator,
             ))),
         }
+    }
+
+    pub fn evaluate(&self) -> Result<f64, CalcError> {
+        let mut result: f64 = 0.0;
+        match self.sub_expr[0].evaluate() {
+            Ok(number) => result += number,
+            Err(err) => return Err(err),
+        }
+        match self.sub_expr[1].evaluate() {
+            Ok(number) => result /= number,
+            Err(err) => return Err(err),
+        }
+
+        Ok(result)
+    }
+
+    pub fn to_string(&self) -> Result<String, CalcError> {
+        let mut result: String = String::from("(");
+        match self.sub_expr[0].to_string() {
+            Ok(number) => result = result +  &number + "/",
+            Err(err) => return Err(err),
+        }
+        match self.sub_expr[1].to_string() {
+            Ok(number) => result += &number,
+            Err(err) => return Err(err),
+        }
+        result += ")";
+        Ok(result)
     }
 }

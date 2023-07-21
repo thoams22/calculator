@@ -1,6 +1,5 @@
 // TODO next functionality 
 
-// add a factorisor/reducer -> ab + cb = (a+b)c, a^2 + 2ab + b^2 = (a+b)^2, (a-b)(a+b) = (a^2-b^2)
 // add a isolator only for one variables
 // add a sustitutor -> y^4 + 6y^2 + 2 = 0 -> x = y^2, x^2 + 6x + 2 = 0
 
@@ -20,10 +19,8 @@
 
 use std::io;
 
-use crate::evaluator::evaluation;
 use crate::tokenizer::tokenization;
 
-mod evaluator;
 mod tokenizer;
 mod expression;
 
@@ -38,19 +35,24 @@ fn main() {
 
     print!("Row Input: {expression}");
 
-    println!("Parsed: {:?}", expression.chars());
-
+    // println!("Parsed: {:?}", expression.chars());
+    
     let tokenized = tokenization(&expression);
-
+    
+    
     match tokenized {
         (Ok(tokens), history) => {
+            println!("Expression evaluated : {:?}", tokens.to_string());
             // println!("history of tokenization {:?}", history);
-            println!("Evaluated form {:?}", tokens);
-            let evaluated = evaluation(tokens);
+            // println!("Evaluated form {:?}", tokens);
+            let evaluated = tokens.evaluate();
             match evaluated {
                 Ok(result) => println!("Result is : {}", result),
-                Err(error) => println!("Error in Evaluation : {:?},\n history {:?}", error, history),
+                Err(error) => println!("Error in Evaluation : {:?},\nHistory {:?}", error, history),
             }
+
+            let simplified = tokens.simplify().to_string();
+            println!("Simplified version is : {:?}", simplified)
         }
         (Err(error), history) => println!("Error in tokenization : {:?},\n history {:?}", error, history),
     }
