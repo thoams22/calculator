@@ -1,4 +1,4 @@
-use crate::expression::Functions;
+use crate::expression::{function::Functions, Expression};
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum CalcError {
@@ -7,9 +7,9 @@ pub enum CalcError {
     BadMinusCase,
     BadFloatParsing,
     BadVariableParsing,
-    InsufficientOperand,
-    InsufficientNumber,
+    BadInstructionToExpressionConvertion,
     UnevaluableToken,
+    MissingExpression,
 }
 
 #[derive(PartialEq, PartialOrd, Debug, Clone, Copy)]
@@ -27,6 +27,79 @@ pub enum Instruction {
     Variable(char),
 }
 
+fn instruction_to_expression(
+    last_instruction: &Instruction,
+    tokenised: &mut Vec<Expression>,
+) -> Result<Expression, CalcError> {
+    // println!("tokenized : {:?}", tokenised);
+    match last_instruction {
+        Instruction::Addition => {
+            let y = tokenised.pop().ok_or(CalcError::MissingExpression)?;
+            let x = tokenised.pop().ok_or(CalcError::MissingExpression)?;
+            Ok(Expression::addition(x, y))
+        }
+        Instruction::Subtraction => {
+            let y = tokenised.pop().ok_or(CalcError::MissingExpression)?;
+            let x = tokenised.pop().ok_or(CalcError::MissingExpression)?;
+            Ok(Expression::subtraction(x, y))
+        }
+        Instruction::Multiplication => {
+            let y = tokenised.pop().ok_or(CalcError::MissingExpression)?;
+            let x = tokenised.pop().ok_or(CalcError::MissingExpression)?;
+            Ok(Expression::multiplication(x, y))
+        }
+        Instruction::Division => {
+            let y = tokenised.pop().ok_or(CalcError::MissingExpression)?;
+            let x = tokenised.pop().ok_or(CalcError::MissingExpression)?;
+            Ok(Expression::division(x, y))
+        }
+        Instruction::Exponentiation => {
+            let y = tokenised.pop().ok_or(CalcError::MissingExpression)?;
+            let x = tokenised.pop().ok_or(CalcError::MissingExpression)?;
+            Ok(Expression::exponentiation(x, y))
+        }
+        Instruction::Function(fun) => match fun {
+            Functions::Ln => Ok(Expression::ln(
+                tokenised.pop().ok_or(CalcError::MissingExpression)?,
+            )),
+            Functions::Log2 => Ok(Expression::log2(
+                tokenised.pop().ok_or(CalcError::MissingExpression)?,
+            )),
+            Functions::Log10 => Ok(Expression::log10(
+                tokenised.pop().ok_or(CalcError::MissingExpression)?,
+            )),
+            Functions::Log => {
+                let y = tokenised.pop().ok_or(CalcError::MissingExpression)?;
+                let x = tokenised.pop().ok_or(CalcError::MissingExpression)?;
+                Ok(Expression::log(x, y))
+            }
+            Functions::Sqrt => Ok(Expression::sqrt(
+                tokenised.pop().ok_or(CalcError::MissingExpression)?,
+            )),
+            Functions::Sin => Ok(Expression::sin(
+                tokenised.pop().ok_or(CalcError::MissingExpression)?,
+            )),
+            Functions::Cos => Ok(Expression::cos(
+                tokenised.pop().ok_or(CalcError::MissingExpression)?,
+            )),
+            Functions::Tan => Ok(Expression::tan(
+                tokenised.pop().ok_or(CalcError::MissingExpression)?,
+            )),
+            Functions::Asin => Ok(Expression::asin(
+                tokenised.pop().ok_or(CalcError::MissingExpression)?,
+            )),
+            Functions::Acos => Ok(Expression::acos(
+                tokenised.pop().ok_or(CalcError::MissingExpression)?,
+            )),
+            Functions::Atan => Ok(Expression::atan(
+                tokenised.pop().ok_or(CalcError::MissingExpression)?,
+            )),
+        },
+        Instruction::Number(num) => Ok(Expression::number(*num)),
+        Instruction::Variable(var) => Ok(Expression::variable(*var)),
+        _ => Err(CalcError::BadInstructionToExpressionConvertion),
+    }
+}
 
 // helper to respect left to right order of operation for operation of same precedence
 fn precedence(token: &Instruction) -> u8 {
@@ -60,18 +133,28 @@ fn try_parse_f64(
     current_number: &mut String,
     instruction_stack: &mut Vec<Instruction>,
     history: &mut Vec<Instruction>,
-) -> Result<Vec<Instruction>, CalcError> {
+    tokenized: &mut Vec<Expression>,
+) -> Option<CalcError> {
     match current_number.parse::<f64>() {
         Ok(number) => {
-            let mut tokenized: Vec<Instruction> = vec![Instruction::Number(number)];
+            tokenized.push(Expression::Number(number));
             if Some(&Instruction::ImplicitMultiplication) == history.last() {
-                tokenized.push(instruction_stack.pop().unwrap());
+                let y = match tokenized.pop().ok_or(CalcError::MissingExpression) {
+                    Ok(ok) => ok,
+                    Err(err) => return Some(err),
+                };
+                let x = match tokenized.pop().ok_or(CalcError::MissingExpression) {
+                    Ok(ok) => ok,
+                    Err(err) => return Some(err),
+                };
+                instruction_stack.pop();
+                tokenized.push(Expression::multiplication(x, y))
             }
             history.push(Instruction::Number(number));
             current_number.clear();
-            Ok(tokenized)
+            None
         }
-        Err(_) => Err(CalcError::BadFloatParsing),
+        Err(_) => Some(CalcError::BadFloatParsing),
     }
 }
 
@@ -79,14 +162,13 @@ fn try_parse_variable(
     current_function: &mut String,
     instruction_stack: &mut Vec<Instruction>,
     history: &mut Vec<Instruction>,
-) -> Result<Vec<Instruction>, CalcError> {
-    let mut tokenized: Vec<Instruction> = Vec::new();
+    mut tokenized: Vec<Expression>,
+) -> Result<Vec<Expression>, CalcError> {
     let binding = current_function.clone();
 
     for token in binding.chars() {
         // check if current_function is a function
         if let Some(result) = is_function(current_function) {
-            println!("{:?}", current_function);
             // check if implicit multiplication with last token
             if let Some(last_history) = history.last() {
                 match last_history {
@@ -96,7 +178,13 @@ fn try_parse_variable(
                         // for left to right order of operation
                         if let Some(last_instruction) = instruction_stack.last() {
                             if precedence(last_instruction) >= 3 {
-                                tokenized.push(instruction_stack.pop().unwrap());
+                                match instruction_to_expression(last_instruction, &mut tokenized) {
+                                    Ok(expr) => {
+                                        tokenized.push(expr);
+                                        instruction_stack.pop();
+                                    }
+                                    Err(error) => return Err(error),
+                                }
                             }
                         }
                         instruction_stack.push(Instruction::Multiplication);
@@ -119,7 +207,13 @@ fn try_parse_variable(
                 if let Some(Instruction::Variable(_)) = history.last() {
                     if let Some(last_instruction) = instruction_stack.last() {
                         if precedence(last_instruction) >= 3 {
-                            tokenized.push(instruction_stack.pop().unwrap());
+                            match instruction_to_expression(last_instruction, &mut tokenized) {
+                                Ok(expr) => {
+                                    tokenized.push(expr);
+                                    instruction_stack.pop();
+                                }
+                                Err(error) => return Err(error),
+                            }
                         }
                     }
                     instruction_stack.push(Instruction::Multiplication);
@@ -138,7 +232,16 @@ fn try_parse_variable(
                         | Instruction::Variable(_) => {
                             if let Some(last_instruction) = instruction_stack.last() {
                                 if precedence(last_instruction) >= 3 {
-                                    tokenized.push(instruction_stack.pop().unwrap());
+                                    match instruction_to_expression(
+                                        last_instruction,
+                                        &mut tokenized,
+                                    ) {
+                                        Ok(expr) => {
+                                            tokenized.push(expr);
+                                            instruction_stack.pop();
+                                        }
+                                        Err(error) => return Err(error),
+                                    }
                                 }
                             }
                             instruction_stack.push(Instruction::Multiplication);
@@ -148,7 +251,7 @@ fn try_parse_variable(
                     }
                 }
                 // push the variable
-                tokenized.push(Instruction::Variable(c));
+                tokenized.push(Expression::Variable(c));
                 history.push(Instruction::Variable(c));
             }
             _ => return Err(CalcError::BadVariableParsing),
@@ -160,9 +263,9 @@ fn try_parse_variable(
     Ok(tokenized)
 }
 
-pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, CalcError>, Vec<Instruction>) {
+pub fn tokenization(expression: &str) -> (Result<Expression, CalcError>, Vec<Instruction>) {
     // variable for the shunting-yard algorithm
-    let mut tokenized: Vec<Instruction> = Vec::new();
+    let mut tokenized: Vec<Expression> = Vec::new();
     let mut instruction_stack: Vec<Instruction> = Vec::new();
     // history for debbuging and for multiple minus
     let mut history: Vec<Instruction> = Vec::new();
@@ -185,7 +288,13 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, CalcError>, V
             if let Some(Instruction::RightParenthesis) = history.last() {
                 if let Some(last_instruction) = instruction_stack.last() {
                     if precedence(last_instruction) >= 3 {
-                        tokenized.push(instruction_stack.pop().unwrap());
+                        match instruction_to_expression(last_instruction, &mut tokenized) {
+                            Ok(expr) => {
+                                tokenized.push(expr);
+                                instruction_stack.pop();
+                            }
+                            Err(error) => return (Err(error), history),
+                        }
                     }
                 }
                 instruction_stack.push(Instruction::Multiplication);
@@ -198,32 +307,43 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, CalcError>, V
         else if token.is_ascii_alphabetic() {
             // check if this was a number before and it is not yet push to tokenized
             if !current_number.is_empty() && current_number != "-" {
-                match try_parse_f64(&mut current_number, &mut instruction_stack, &mut history) {
-                    Ok(result) => {
-                        tokenized.extend(result);
-                    }
-                    Err(error) => return (Err(error), history),
+                match try_parse_f64(
+                    &mut current_number,
+                    &mut instruction_stack,
+                    &mut history,
+                    &mut tokenized,
+                ) {
+                    None => {}
+                    Some(error) => return (Err(error), history),
                 }
             }
             current_function.push(token);
         } else {
             // check if this was a number before and it is not yet push to tokenized
             if !current_number.is_empty() && current_number != "-" {
-                match try_parse_f64(&mut current_number, &mut instruction_stack, &mut history) {
-                    Ok(result) => {
-                        tokenized.extend(result);
-                    }
-                    Err(error) => return (Err(error), history),
+                match try_parse_f64(
+                    &mut current_number,
+                    &mut instruction_stack,
+                    &mut history,
+                    &mut tokenized,
+                ) {
+                    None => {}
+                    Some(error) => return (Err(error), history),
                 }
             }
             // check for variables
             if !current_function.is_empty() && token != '(' {
-
                 if current_number == "-" {
-                    tokenized.push(Instruction::Number(-1.0));
+                    tokenized.push(Expression::Number(-1.0));
                     if let Some(last_instruction) = instruction_stack.last() {
                         if precedence(last_instruction) >= 3 {
-                            tokenized.push(instruction_stack.pop().unwrap());
+                            match instruction_to_expression(last_instruction, &mut tokenized) {
+                                Ok(expr) => {
+                                    tokenized.push(expr);
+                                    instruction_stack.pop();
+                                }
+                                Err(error) => return (Err(error), history),
+                            }
                         }
                     }
                     instruction_stack.push(Instruction::Multiplication);
@@ -234,55 +354,64 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, CalcError>, V
                     &mut current_function,
                     &mut instruction_stack,
                     &mut history,
+                    tokenized,
                 ) {
                     Ok(result) => {
-                        tokenized.extend(result);
+                        tokenized = result;
                     }
                     Err(error) => return (Err(error), history),
                 }
             }
             match token {
                 '/' => {
-                    loop {
-                        if let Some(last_instruction) = instruction_stack.last() {
+                    while let Some(last_instruction) = instruction_stack.last() {
                             if precedence(last_instruction) >= 3 {
-                                tokenized.push(instruction_stack.pop().unwrap());
+                                match instruction_to_expression(last_instruction, &mut tokenized) {
+                                    Ok(expr) => {
+                                        tokenized.push(expr);
+                                        instruction_stack.pop();
+                                    }
+                                    Err(error) => return (Err(error), history),
+                                }
                             } else {
                                 break;
                             }
-                        } else {
-                            break;
                         }
-                    }
+                    
                     history.push(Instruction::Division);
                     instruction_stack.push(Instruction::Division);
                 }
                 '*' => {
-                    loop {
-                        if let Some(last_instruction) = instruction_stack.last() {
+                    while let Some(last_instruction) = instruction_stack.last() {
                             if precedence(last_instruction) >= 3 {
-                                tokenized.push(instruction_stack.pop().unwrap());
+                                match instruction_to_expression(last_instruction, &mut tokenized) {
+                                    Ok(expr) => {
+                                        tokenized.push(expr);
+                                        instruction_stack.pop();
+                                    }
+                                    Err(error) => return (Err(error), history),
+                                }
                             } else {
                                 break;
                             }
-                        } else {
-                            break;
-                        }
+                        
                     }
                     history.push(Instruction::Multiplication);
                     instruction_stack.push(Instruction::Multiplication);
                 }
                 '+' => {
-                    loop {
-                        if let Some(last_instruction) = instruction_stack.last() {
+                    while let Some(last_instruction) = instruction_stack.last() {
                             if precedence(last_instruction) >= 2 {
-                                tokenized.push(instruction_stack.pop().unwrap());
+                                match instruction_to_expression(last_instruction, &mut tokenized) {
+                                    Ok(expr) => {
+                                        tokenized.push(expr);
+                                        instruction_stack.pop();
+                                    }
+                                    Err(error) => return (Err(error), history),
+                                }
                             } else {
                                 break;
                             }
-                        } else {
-                            break;
-                        }
                     }
                     history.push(Instruction::Addition);
                     instruction_stack.push(Instruction::Addition);
@@ -296,17 +425,23 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, CalcError>, V
                         (Some(Instruction::Number(_)), _)
                         | (Some(Instruction::RightParenthesis), _)
                         | (Some(Instruction::Variable(_)), _) => {
-                            loop {
-                                if let Some(last_instruction) = instruction_stack.last() {
+                            while let
+                                Some(last_instruction) = instruction_stack.last() {
                                     if precedence(last_instruction) >= 2 {
-                                        tokenized.push(instruction_stack.pop().unwrap());
+                                        match instruction_to_expression(
+                                            last_instruction,
+                                            &mut tokenized,
+                                        ) {
+                                            Ok(expr) => {
+                                                tokenized.push(expr);
+                                                instruction_stack.pop();
+                                            }
+                                            Err(error) => return (Err(error), history),
+                                        }
                                     } else {
                                         break;
                                     }
-                                } else {
-                                    break;
                                 }
-                            }
                             instruction_stack.push(Instruction::Subtraction);
                         }
                         (Some(Instruction::Subtraction), Some(Instruction::Subtraction)) => {
@@ -348,10 +483,19 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, CalcError>, V
                     if !current_function.is_empty() {
                         // if function is preceded by minus
                         if current_number == "-" {
-                            tokenized.push(Instruction::Number(-1.0));
+                            tokenized.push(Expression::Number(-1.0));
                             if let Some(last_instruction) = instruction_stack.last() {
                                 if precedence(last_instruction) >= 3 {
-                                    tokenized.push(instruction_stack.pop().unwrap());
+                                    match instruction_to_expression(
+                                        last_instruction,
+                                        &mut tokenized,
+                                    ) {
+                                        Ok(expr) => {
+                                            tokenized.push(expr);
+                                            instruction_stack.pop();
+                                        }
+                                        Err(error) => return (Err(error), history),
+                                    }
                                 }
                             }
                             instruction_stack.push(Instruction::Multiplication);
@@ -363,9 +507,10 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, CalcError>, V
                             &mut current_function,
                             &mut instruction_stack,
                             &mut history,
+                            tokenized,
                         ) {
                             Ok(result) => {
-                                tokenized.extend(result);
+                                tokenized = result;
                             }
                             Err(error) => return (Err(error), history),
                         }
@@ -379,7 +524,16 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, CalcError>, V
                             Instruction::Number(_) | Instruction::RightParenthesis => {
                                 if let Some(last_instruction) = instruction_stack.last() {
                                     if precedence(last_instruction) >= 3 {
-                                        tokenized.push(instruction_stack.pop().unwrap());
+                                        match instruction_to_expression(
+                                            last_instruction,
+                                            &mut tokenized,
+                                        ) {
+                                            Ok(expr) => {
+                                                tokenized.push(expr);
+                                                instruction_stack.pop();
+                                            }
+                                            Err(error) => return (Err(error), history),
+                                        }
                                     }
                                 }
                                 instruction_stack.push(Instruction::Multiplication);
@@ -398,7 +552,13 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, CalcError>, V
                         // pop to tokenized until ( find or return error if ( missing and instruction_stack.last() == None
                         if let Some(last_instruction) = instruction_stack.last() {
                             if last_instruction != &Instruction::LeftParenthesis {
-                                tokenized.push(instruction_stack.pop().unwrap());
+                                match instruction_to_expression(last_instruction, &mut tokenized) {
+                                    Ok(expr) => {
+                                        tokenized.push(expr);
+                                        instruction_stack.pop();
+                                    }
+                                    Err(error) => return (Err(error), history),
+                                }
                             } else {
                                 // tokenized.push(Instruction::RightParenthesis);
                                 instruction_stack.pop();
@@ -417,11 +577,10 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, CalcError>, V
                             &mut current_number,
                             &mut instruction_stack,
                             &mut history,
+                            &mut tokenized,
                         ) {
-                            Ok(result) => {
-                                tokenized.extend(result);
-                            }
-                            Err(error) => return (Err(error), history),
+                            None => {}
+                            Some(error) => return (Err(error), history),
                         }
                     }
                 }
@@ -433,36 +592,49 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, CalcError>, V
             }
         }
     }
-    
+
     // check for variables
     if !current_function.is_empty() {
-
         if current_number == "-" {
-            tokenized.push(Instruction::Number(-1.0));
+            tokenized.push(Expression::Number(-1.0));
             if let Some(last_instruction) = instruction_stack.last() {
                 if precedence(last_instruction) >= 3 {
-                    tokenized.push(instruction_stack.pop().unwrap());
+                    match instruction_to_expression(last_instruction, &mut tokenized) {
+                        Ok(expr) => {
+                            tokenized.push(expr);
+                            instruction_stack.pop();
+                        }
+                        Err(error) => return (Err(error), history),
+                    }
                 }
             }
             instruction_stack.push(Instruction::Multiplication);
             current_number.clear();
         }
 
-        match try_parse_variable(&mut current_function, &mut instruction_stack, &mut history) {
+        match try_parse_variable(
+            &mut current_function,
+            &mut instruction_stack,
+            &mut history,
+            tokenized,
+        ) {
             Ok(result) => {
-                tokenized.extend(result);
+                tokenized = result;
             }
             Err(error) => return (Err(error), history),
         }
     }
-    
+
     // if the last token is a number parse it or Error
     if !current_number.is_empty() {
-        match try_parse_f64(&mut current_number, &mut instruction_stack, &mut history) {
-            Ok(result) => {
-                tokenized.extend(result);
-            }
-            Err(error) => return (Err(error), history),
+        match try_parse_f64(
+            &mut current_number,
+            &mut instruction_stack,
+            &mut history,
+            &mut tokenized,
+        ) {
+            None => {}
+            Some(error) => return (Err(error), history),
         }
     }
     // check if there was a pair number of parenthesis or Error
@@ -471,131 +643,42 @@ pub fn tokenization(expression: &str) -> (Result<Vec<Instruction>, CalcError>, V
     }
 
     // pop instruction_stack in tokenized if ther was Operation left inside
-    tokenized.extend(instruction_stack.drain(..).rev());
+    instruction_stack.drain(..).rev().for_each(|instru| {
+        match instruction_to_expression(&instru, &mut tokenized) {
+            Ok(expr) => tokenized.push(expr),
 
-    (Ok(tokenized), history)
-}
-
-pub fn untokenization(tokens: Vec<Instruction>) -> Result<String, CalcError> {
-    let mut stack = Vec::new();
-
-    for token in tokens {
-        match token {
-            Instruction::Number(number) => stack.push(number.to_string()),
-            Instruction::Variable(var) => stack.push(var.to_string()),
-            Instruction::Addition => {
-                let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                stack.push(format!("({x}+{y})"));
-            }
-            Instruction::Subtraction => {
-                let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                stack.push(format!("({x}-{y})"));
-            }
-            Instruction::Multiplication => {
-                let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                stack.push(format!("({x}*{y})"));
-            }
-            Instruction::Division => {
-                let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                stack.push(format!("({x}*{y})"));
-            }
-            Instruction::Exponentiation => {
-                let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                stack.push(format!("({x}^{y})"));
-            }
-            Instruction::Function(Functions::Ln) => {
-                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                stack.push(format!("ln({x})"));
-            }
-            Instruction::Function(Functions::Log10) => {
-                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                stack.push(format!("log10({x})"));
-            }
-            Instruction::Function(Functions::Log2) => {
-                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                stack.push(format!("log2({x})"));
-            }
-            Instruction::Function(Functions::Log) => {
-                let y = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                stack.push(format!("log({x}, {y})"));
-            }
-            Instruction::Function(Functions::Sqrt) => {
-                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                stack.push(format!("sqrt({x})"));
-            }
-            Instruction::Function(Functions::Sin) => {
-                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                stack.push(format!("sin({x})"));
-            }
-            Instruction::Function(Functions::Cos) => {
-                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                stack.push(format!("cos({x})"));
-            }
-            Instruction::Function(Functions::Tan) => {
-                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                stack.push(format!("tan({x})"));
-            }
-            Instruction::Function(Functions::Asin) => {
-                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                stack.push(format!("asin({x})"));
-            }
-            Instruction::Function(Functions::Acos) => {
-                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                stack.push(format!("acos({x})"));
-            }
-            Instruction::Function(Functions::Atan) => {
-                let x = stack.pop().ok_or(CalcError::InsufficientNumber)?;
-                stack.push(format!("atan({x})"));
-            }
-            _ => return Err(CalcError::UnevaluableToken),
+            Err(_error) => {}
         }
-    }
+    });
 
-    let result = stack.pop();
-
-    if !stack.is_empty() {
-        return Err(CalcError::InsufficientOperand);
-    }
-
-    match result {
-        Some(mut res) => {
-            if res.starts_with('(') && res.ends_with(')') {
-                res.remove(0);
-                res.remove(res.len()-1);
-            }
-            return Ok(res);
-        }
-        None => return Err(CalcError::InsufficientNumber)
-    }
-
+    (Ok(tokenized[0].clone()), history)
 }
 
 #[cfg(test)]
 mod tests_tokenization {
-    use crate::tokenizer::{tokenization, CalcError, Functions, Instruction};
+    use crate::{
+        expression::Expression,
+        tokenizer::{tokenization, CalcError, Instruction},
+    };
 
     #[test]
     fn blank() {
-        let result: (Result<Vec<Instruction>, CalcError>, Vec<Instruction>) =
+        let result: (Result<Expression, CalcError>, Vec<Instruction>) =
             tokenization(" 2* 3   / 4         +4 -9");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(3.0),
-                Instruction::Multiplication,
-                Instruction::Number(4.0),
-                Instruction::Division,
-                Instruction::Number(4.0),
-                Instruction::Addition,
-                Instruction::Number(9.0),
-                Instruction::Subtraction,
-            ]),
+            Ok(Expression::subtraction(
+                Expression::addition(
+                    Expression::division(
+                        Expression::multiplication(
+                            Expression::Number(2.0),
+                            Expression::Number(3.0)
+                        ),
+                        Expression::Number(4.0)
+                    ),
+                    Expression::Number(4.0)
+                ),
+                Expression::Number(9.0)
+            )),
             result.0,
             "blank 1,\n history = {:?}",
             result.1
@@ -606,197 +689,179 @@ mod tests_tokenization {
     fn negative_number() {
         let mut result = tokenization("-2+4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(-2.0),
-                Instruction::Number(4.0),
-                Instruction::Addition,
-            ]),
+            Ok(Expression::addition(
+                Expression::Number(-2.0),
+                Expression::Number(4.0)
+            )),
             result.0,
             "negative_number 1,\n history = {:?}",
             result.1
         );
         result = tokenization("2-4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(4.0),
-                Instruction::Subtraction,
-            ]),
+            Ok(Expression::addition(
+                Expression::Number(2.0),
+                Expression::multiplication(Expression::Number(-1.0), Expression::Number(4.0))
+            )),
             result.0,
             "negative_number 2,\n history = {:?}",
             result.1
         );
+
         result = tokenization("-2-4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(-2.0),
-                Instruction::Number(4.0),
-                Instruction::Subtraction,
-            ]),
+            Ok(Expression::addition(
+                Expression::Number(-2.0),
+                Expression::multiplication(Expression::Number(-1.0), Expression::Number(4.0))
+            )),
             result.0,
             "negative_number 3,\nhistory = {:?}",
             result.1
         );
         result = tokenization("-2--4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(-2.0),
-                Instruction::Number(4.0),
-                Instruction::Addition,
-            ]),
+            Ok(Expression::addition(
+                Expression::Number(-2.0),
+                Expression::Number(4.0)
+            )),
             result.0,
             "negative_number 4,\n history = {:?}",
             result.1
         );
         result = tokenization("--2+4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(4.0),
-                Instruction::Addition,
-            ]),
+            Ok(Expression::addition(
+                Expression::Number(2.0),
+                Expression::Number(4.0)
+            )),
             result.0,
             "negative_number 5,\n history = {:?}",
             result.1
         );
         result = tokenization("---2+4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(-2.0),
-                Instruction::Number(4.0),
-                Instruction::Addition,
-            ]),
+            Ok(Expression::addition(
+                Expression::Number(-2.0),
+                Expression::Number(4.0)
+            )),
             result.0,
             "negative_number 6,\n history = {:?}",
             result.1
         );
         result = tokenization("-2--4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(-2.0),
-                Instruction::Number(4.0),
-                Instruction::Addition,
-            ]),
+            Ok(Expression::addition(
+                Expression::Number(-2.0),
+                Expression::Number(4.0)
+            )),
             result.0,
             "negative_number 7,\n history = {:?}",
             result.1
         );
         result = tokenization("-2---4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(-2.0),
-                Instruction::Number(4.0),
-                Instruction::Subtraction,
-            ]),
+            Ok(Expression::addition(
+                Expression::Number(-2.0),
+                Expression::multiplication(Expression::Number(-1.0), Expression::Number(4.0))
+            )),
             result.0,
             "negative_number 8,\n history = {:?}",
             result.1
         );
         result = tokenization("-2/-4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(-2.0),
-                Instruction::Number(-4.0),
-                Instruction::Division,
-            ]),
+            Ok(Expression::division(
+                Expression::Number(-2.0),
+                Expression::Number(-4.0)
+            )),
             result.0,
             "negative_number 9,\n history = {:?}",
             result.1
         );
         result = tokenization("-2*-4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(-2.0),
-                Instruction::Number(-4.0),
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::Number(-2.0),
+                Expression::Number(-4.0)
+            )),
             result.0,
             "negative_number 10,\n history = {:?}",
             result.1
         );
+
         result = tokenization("-2+-4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(-2.0),
-                Instruction::Number(-4.0),
-                Instruction::Addition,
-            ]),
+            Ok(Expression::addition(
+                Expression::Number(-2.0),
+                Expression::Number(-4.0)
+            )),
             result.0,
             "negative_number 11,\n history = {:?}",
             result.1
         );
+
         result = tokenization("--2/--4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(4.0),
-                Instruction::Division,
-            ]),
+            Ok(Expression::division(
+                Expression::Number(2.0),
+                Expression::Number(4.0),
+            )),
             result.0,
             "negative_number 12,\n history = {:?}",
             result.1
         );
         result = tokenization("-2*--4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(-2.0),
-                Instruction::Number(4.0),
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::Number(-2.0),
+                Expression::Number(4.0)
+            )),
             result.0,
             "negative_number 13,\n history = {:?}",
             result.1
         );
         result = tokenization("-2*(--4/2-2)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(-2.0),
-                Instruction::Number(4.0),
-                Instruction::Number(2.0),
-                Instruction::Division,
-                Instruction::Number(2.0),
-                Instruction::Subtraction,
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::Number(-2.0),
+                Expression::addition(
+                    Expression::division(Expression::Number(4.0), Expression::Number(2.0)),
+                    Expression::multiplication(Expression::Number(-1.0), Expression::Number(2.0))
+                )
+            )),
             result.0,
             "negative_number 14,\n history = {:?}",
             result.1
         );
         result = tokenization("-2*(--4/-2--2)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(-2.0),
-                Instruction::Number(4.0),
-                Instruction::Number(-2.0),
-                Instruction::Division,
-                Instruction::Number(2.0),
-                Instruction::Addition,
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::Number(-2.0),
+                Expression::addition(
+                    Expression::division(Expression::Number(4.0), Expression::Number(-2.0)),
+                    Expression::Number(2.0)
+                )
+            )),
             result.0,
             "negative_number 15,\n history = {:?}",
             result.1
         );
         result = tokenization("--2^---4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(-4.0),
-                Instruction::Exponentiation,
-            ]),
+            Ok(Expression::exponentiation(
+                Expression::Number(2.0),
+                Expression::Number(-4.0)
+            )),
             result.0,
             "negative_number 16,\n history = {:?}",
             result.1
         );
         result = tokenization("2(-4)-8");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(-4.0),
-                Instruction::Multiplication,
-                Instruction::Number(8.0),
-                Instruction::Subtraction,
-            ]),
+            Ok(Expression::addition(
+                Expression::multiplication(Expression::Number(2.0), Expression::Number(-4.0)),
+                Expression::multiplication(Expression::Number(-1.0), Expression::Number(8.0))
+            )),
             result.0,
             "negative_number 17,\n history = {:?}",
             result.1
@@ -825,45 +890,42 @@ mod tests_tokenization {
     fn parenthesis() {
         let mut result = tokenization("2*(3+4)+4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(3.0),
-                Instruction::Number(4.0),
-                Instruction::Addition,
-                Instruction::Multiplication,
-                Instruction::Number(4.0),
-                Instruction::Addition,
-            ]),
+            Ok(Expression::addition(
+                Expression::multiplication(
+                    Expression::Number(2.0),
+                    Expression::addition(Expression::Number(3.0), Expression::Number(4.0))
+                ),
+                Expression::Number(4.0)
+            )),
             result.0,
             "parenthesis 1,\n history = {:?}",
             result.1
         );
         result = tokenization("2+((3*4)+4)*6");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(3.0),
-                Instruction::Number(4.0),
-                Instruction::Multiplication,
-                Instruction::Number(4.0),
-                Instruction::Addition,
-                Instruction::Number(6.0),
-                Instruction::Multiplication,
-                Instruction::Addition,
-            ]),
+            Ok(Expression::addition(
+                Expression::Number(2.0),
+                Expression::multiplication(
+                    Expression::addition(
+                        Expression::multiplication(
+                            Expression::Number(3.0),
+                            Expression::Number(4.0)
+                        ),
+                        Expression::Number(4.0)
+                    ),
+                    Expression::Number(6.0)
+                )
+            ),),
             result.0,
             "parenthesis 2,\n history = {:?}",
             result.1
         );
         result = tokenization("2+(4)*6");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(4.0),
-                Instruction::Number(6.0),
-                Instruction::Multiplication,
-                Instruction::Addition,
-            ]),
+            Ok(Expression::addition(
+                Expression::Number(2.0),
+                Expression::multiplication(Expression::Number(4.0), Expression::Number(6.0)),
+            )),
             result.0,
             "parenthesis 3,\n history = {:?}",
             result.1
@@ -885,19 +947,16 @@ mod tests_tokenization {
 
         result = tokenization("(2*4+6)(2*4+6)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(4.0),
-                Instruction::Multiplication,
-                Instruction::Number(6.0),
-                Instruction::Addition,
-                Instruction::Number(2.0),
-                Instruction::Number(4.0),
-                Instruction::Multiplication,
-                Instruction::Number(6.0),
-                Instruction::Addition,
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::addition(
+                    Expression::multiplication(Expression::Number(2.0), Expression::Number(4.0)),
+                    Expression::Number(6.0)
+                ),
+                Expression::addition(
+                    Expression::multiplication(Expression::Number(2.0), Expression::Number(4.0)),
+                    Expression::Number(6.0)
+                ),
+            )),
             result.0,
             "parenthesis 6,\n history = {:?}",
             result.1
@@ -908,72 +967,60 @@ mod tests_tokenization {
     fn exponentiation() {
         let mut result = tokenization("2^4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(4.0),
-                Instruction::Exponentiation,
-            ]),
+            Ok(Expression::exponentiation(
+                Expression::Number(2.0),
+                Expression::Number(4.0)
+            )),
             result.0,
             "exponentiation 1,\n history = {:?}",
             result.1
         );
         result = tokenization("2^-4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(-4.0),
-                Instruction::Exponentiation,
-            ]),
+            Ok(Expression::exponentiation(
+                Expression::Number(2.0),
+                Expression::Number(-4.0)
+            )),
             result.0,
             "exponentiation 2,\n history = {:?}",
             result.1
         );
         result = tokenization("-2^--4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(-2.0),
-                Instruction::Number(4.0),
-                Instruction::Exponentiation,
-            ]),
+            Ok(Expression::exponentiation(
+                Expression::Number(-2.0),
+                Expression::Number(4.0)
+            )),
             result.0,
             "exponentiation 3,\n history = {:?}",
             result.1
         );
         result = tokenization("-2^4^6");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(-2.0),
-                Instruction::Number(4.0),
-                Instruction::Number(6.0),
-                Instruction::Exponentiation,
-                Instruction::Exponentiation,
-            ]),
+            Ok(Expression::exponentiation(
+                Expression::Number(-2.0),
+                Expression::exponentiation(Expression::Number(4.0), Expression::Number(6.0)),
+            )),
             result.0,
             "exponentiation 4,\n history = {:?}",
             result.1
         );
         result = tokenization("(-2^4)^6");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(-2.0),
-                Instruction::Number(4.0),
-                Instruction::Exponentiation,
-                Instruction::Number(6.0),
-                Instruction::Exponentiation,
-            ]),
+            Ok(Expression::exponentiation(
+                Expression::exponentiation(Expression::Number(-2.0), Expression::Number(4.0)),
+                Expression::Number(6.0)
+            )),
             result.0,
             "exponentiation 5,\n history = {:?}",
             result.1
         );
         result = tokenization("(-2+4)^6");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(-2.0),
-                Instruction::Number(4.0),
-                Instruction::Addition,
-                Instruction::Number(6.0),
-                Instruction::Exponentiation,
-            ]),
+            Ok(Expression::exponentiation(
+                Expression::addition(Expression::Number(-2.0), Expression::Number(4.0)),
+                Expression::Number(6.0)
+            )),
             result.0,
             "exponentiation 6,\n history = {:?}",
             result.1
@@ -984,66 +1031,61 @@ mod tests_tokenization {
     fn implicit_multiplication() {
         let mut result = tokenization("2(3+4)+4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(3.0),
-                Instruction::Number(4.0),
-                Instruction::Addition,
-                Instruction::Multiplication,
-                Instruction::Number(4.0),
-                Instruction::Addition,
-            ]),
+            Ok(Expression::addition(
+                Expression::multiplication(
+                    Expression::Number(2.0),
+                    Expression::addition(Expression::Number(3.0), Expression::Number(4.0)),
+                ),
+                Expression::Number(4.0),
+            )),
             result.0,
             "implicit_multiplication 1,\n history = {:?}",
             result.1
         );
         result = tokenization("(3+4)4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(3.0),
-                Instruction::Number(4.0),
-                Instruction::Addition,
-                Instruction::Number(4.0),
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::addition(Expression::Number(3.0), Expression::Number(4.0)),
+                Expression::Number(4.0)
+            )),
             result.0,
             "implicit_multiplication 2,\n history = {:?}",
             result.1
         );
         result = tokenization("2*2(3(4^2)4)5");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(2.0),
-                Instruction::Multiplication,
-                Instruction::Number(3.0),
-                Instruction::Number(4.0),
-                Instruction::Number(2.0),
-                Instruction::Exponentiation,
-                Instruction::Multiplication,
-                Instruction::Number(4.0),
-                Instruction::Multiplication,
-                Instruction::Multiplication,
-                Instruction::Number(5.0),
-                Instruction::Multiplication
-            ]),
+            Ok(Expression::multiplication(
+                Expression::multiplication(
+                    Expression::multiplication(Expression::Number(2.0), Expression::Number(2.0)),
+                    Expression::multiplication(
+                        Expression::multiplication(
+                            Expression::Number(3.0),
+                            Expression::exponentiation(
+                                Expression::Number(4.0),
+                                Expression::Number(2.0)
+                            )
+                        ),
+                        Expression::Number(4.0)
+                    )
+                ),
+                Expression::Number(5.0)
+            )),
             result.0,
             "implicit_multiplication 3,\n history = {:?}",
             result.1
         );
         result = tokenization("2(3+4)4+3");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(3.0),
-                Instruction::Number(4.0),
-                Instruction::Addition,
-                Instruction::Multiplication,
-                Instruction::Number(4.0),
-                Instruction::Multiplication,
-                Instruction::Number(3.0),
-                Instruction::Addition,
-            ]),
+            Ok(Expression::addition(
+                Expression::multiplication(
+                    Expression::multiplication(
+                        Expression::Number(2.0),
+                        Expression::addition(Expression::Number(3.0), Expression::Number(4.0))
+                    ),
+                    Expression::Number(4.0)
+                ),
+                Expression::Number(3.0)
+            )),
             result.0,
             "implicit_multiplication 4,\n history = {:?}",
             result.1
@@ -1054,40 +1096,36 @@ mod tests_tokenization {
     fn function() {
         let mut result = tokenization("ln(4-3)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(4.0),
-                Instruction::Number(3.0),
-                Instruction::Subtraction,
-                Instruction::Function(Functions::Ln),
-            ]),
+            Ok(Expression::ln(Expression::addition(
+                Expression::Number(4.0),
+                Expression::multiplication(Expression::Number(-1.0), Expression::Number(3.0)),
+            ))),
             result.0,
             "function 1,\n history = {:?}",
             result.1
         );
         result = tokenization("4ln(4-3)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(4.0),
-                Instruction::Number(4.0),
-                Instruction::Number(3.0),
-                Instruction::Subtraction,
-                Instruction::Function(Functions::Ln),
-                Instruction::Multiplication
-            ]),
+            Ok(Expression::multiplication(
+                Expression::number(4.0),
+                Expression::ln(Expression::addition(
+                    Expression::Number(4.0),
+                    Expression::multiplication(Expression::Number(-1.0), Expression::Number(3.0)),
+                )),
+            )),
             result.0,
             "function 2,\n history = {:?}",
             result.1
         );
         result = tokenization("ln(4-3)4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(4.0),
-                Instruction::Number(3.0),
-                Instruction::Subtraction,
-                Instruction::Function(Functions::Ln),
-                Instruction::Number(4.0),
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::ln(Expression::addition(
+                    Expression::Number(4.0),
+                    Expression::multiplication(Expression::Number(-1.0), Expression::Number(3.0)),
+                )),
+                Expression::number(4.0),
+            )),
             result.0,
             "function 3,\n history = {:?}",
             result.1
@@ -1095,138 +1133,117 @@ mod tests_tokenization {
 
         result = tokenization("ln(4-3)4ln(8-5)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(4.0),
-                Instruction::Number(3.0),
-                Instruction::Subtraction,
-                Instruction::Function(Functions::Ln),
-                Instruction::Number(4.0),
-                Instruction::Multiplication,
-                Instruction::Number(8.0),
-                Instruction::Number(5.0),
-                Instruction::Subtraction,
-                Instruction::Function(Functions::Ln),
-                Instruction::Multiplication
-            ]),
+            Ok(Expression::multiplication(
+                Expression::multiplication(
+                    Expression::ln(Expression::addition(
+                        Expression::Number(4.0),
+                        Expression::multiplication(
+                            Expression::Number(-1.0),
+                            Expression::Number(3.0)
+                        )
+                    )),
+                    Expression::Number(4.0)
+                ),
+                Expression::ln(Expression::addition(
+                    Expression::Number(8.0),
+                    Expression::multiplication(Expression::Number(-1.0), Expression::Number(5.0))
+                ))
+            )),
             result.0,
             "function 4,\n history = {:?}",
             result.1
         );
         result = tokenization("4ln(4-3)--8--7");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(4.0),
-                Instruction::Number(4.0),
-                Instruction::Number(3.0),
-                Instruction::Subtraction,
-                Instruction::Function(Functions::Ln),
-                Instruction::Multiplication,
-                Instruction::Number(8.0),
-                Instruction::Addition,
-                Instruction::Number(7.0),
-                Instruction::Addition,
-            ]),
+            Ok(Expression::addition(
+                Expression::addition(
+                    Expression::multiplication(
+                        Expression::Number(4.0),
+                        Expression::ln(Expression::addition(
+                            Expression::Number(4.0),
+                            Expression::multiplication(
+                                Expression::Number(-1.0),
+                                Expression::Number(3.0)
+                            )
+                        ))
+                    ),
+                    Expression::Number(8.0)
+                ),
+                Expression::Number(7.0)
+            )),
             result.0,
             "function 5,\n history = {:?}",
             result.1
         );
         result = tokenization("log2(4)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(4.0),
-                Instruction::Function(Functions::Log2),
-            ]),
+            Ok(Expression::log2(Expression::Number(4.0))),
             result.0,
             "function 6,\n history = {:?}",
             result.1
         );
         result = tokenization("log10(4)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(4.0),
-                Instruction::Function(Functions::Log10),
-            ]),
+            Ok(Expression::log10(Expression::Number(4.0))),
             result.0,
             "function 7,\n history = {:?}",
             result.1
         );
         result = tokenization("log(3, 4)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(3.0),
-                Instruction::Number(4.0),
-                Instruction::Function(Functions::Log),
-            ]),
+            Ok(Expression::log(
+                Expression::Number(3.0),
+                Expression::Number(4.0)
+            )),
             result.0,
             "function 8,\n history = {:?}",
             result.1
         );
         result = tokenization("sin(0)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(0.0),
-                Instruction::Function(Functions::Sin),
-            ]),
+            Ok(Expression::sin(Expression::Number(0.0))),
             result.0,
             "function 9,\n history = {:?}",
             result.1
         );
         result = tokenization("cos(0)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(0.0),
-                Instruction::Function(Functions::Cos),
-            ]),
+            Ok(Expression::cos(Expression::Number(0.0))),
             result.0,
             "function 10,\n history = {:?}",
             result.1
         );
         result = tokenization("tan(0)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(0.0),
-                Instruction::Function(Functions::Tan),
-            ]),
+            Ok(Expression::tan(Expression::Number(0.0))),
             result.0,
             "function 11,\n history = {:?}",
             result.1
         );
         result = tokenization("sqrt(4)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(4.0),
-                Instruction::Function(Functions::Sqrt),
-            ]),
+            Ok(Expression::sqrt(Expression::Number(4.0))),
             result.0,
             "function 12,\n history = {:?}",
             result.1
         );
         result = tokenization("asin(0)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(0.0),
-                Instruction::Function(Functions::Asin),
-            ]),
+            Ok(Expression::asin(Expression::Number(0.0))),
             result.0,
             "function 13,\n history = {:?}",
             result.1
         );
         result = tokenization("acos(0)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(0.0),
-                Instruction::Function(Functions::Acos),
-            ]),
+            Ok(Expression::acos(Expression::Number(0.0))),
             result.0,
             "function 14,\n history = {:?}",
             result.1
         );
         result = tokenization("atan(0)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(0.0),
-                Instruction::Function(Functions::Atan),
-            ]),
+            Ok(Expression::atan(Expression::Number(0.0))),
             result.0,
             "function 15,\n history = {:?}",
             result.1
@@ -1234,12 +1251,10 @@ mod tests_tokenization {
 
         result = tokenization("-sqrt(4)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(-1.0),
-                Instruction::Number(4.0),
-                Instruction::Function(Functions::Sqrt),
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::Number(-1.0),
+                Expression::sqrt(Expression::Number(4.0))
+            )),
             result.0,
             "function 16,\n history = {:?}",
             result.1
@@ -1247,12 +1262,10 @@ mod tests_tokenization {
 
         result = tokenization("-1sqrt(4)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(-1.0),
-                Instruction::Number(4.0),
-                Instruction::Function(Functions::Sqrt),
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::Number(-1.0),
+                Expression::sqrt(Expression::Number(4.0))
+            )),
             result.0,
             "function 17,\n history = {:?}",
             result.1
@@ -1260,14 +1273,10 @@ mod tests_tokenization {
 
         result = tokenization("2*-sqrt(4)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(-1.0),
-                Instruction::Multiplication,
-                Instruction::Number(4.0),
-                Instruction::Function(Functions::Sqrt),
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::multiplication(Expression::Number(2.0), Expression::Number(-1.0),),
+                Expression::sqrt(Expression::Number(4.0))
+            )),
             result.0,
             "function 18,\n history = {:?}",
             result.1
@@ -1275,18 +1284,13 @@ mod tests_tokenization {
 
         result = tokenization("2*-sqrt(4)*2^2");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(-1.0),
-                Instruction::Multiplication,
-                Instruction::Number(4.0),
-                Instruction::Function(Functions::Sqrt),
-                Instruction::Multiplication,
-                Instruction::Number(2.0),
-                Instruction::Number(2.0),
-                Instruction::Exponentiation,
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::multiplication(
+                    Expression::multiplication(Expression::Number(2.0), Expression::Number(-1.0)),
+                    Expression::sqrt(Expression::Number(4.0))
+                ),
+                Expression::exponentiation(Expression::Number(2.0), Expression::Number(2.0))
+            )),
             result.0,
             "function 19,\n history = {:?}",
             result.1
@@ -1294,16 +1298,13 @@ mod tests_tokenization {
 
         result = tokenization("2*--sqrt(4)*2^2");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(4.0),
-                Instruction::Function(Functions::Sqrt),
-                Instruction::Multiplication,
-                Instruction::Number(2.0),
-                Instruction::Number(2.0),
-                Instruction::Exponentiation,
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::multiplication(
+                    Expression::Number(2.0),
+                    Expression::sqrt(Expression::Number(4.0))
+                ),
+                Expression::exponentiation(Expression::Number(2.0), Expression::Number(2.0))
+            )),
             result.0,
             "function 20,\n history = {:?}",
             result.1
@@ -1311,18 +1312,13 @@ mod tests_tokenization {
 
         result = tokenization("2*---sqrt(4)*2^-2");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(-1.0),
-                Instruction::Multiplication,
-                Instruction::Number(4.0),
-                Instruction::Function(Functions::Sqrt),
-                Instruction::Multiplication,
-                Instruction::Number(2.0),
-                Instruction::Number(-2.0),
-                Instruction::Exponentiation,
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::multiplication(
+                    Expression::multiplication(Expression::Number(2.0), Expression::Number(-1.0)),
+                    Expression::sqrt(Expression::Number(4.0))
+                ),
+                Expression::exponentiation(Expression::Number(2.0), Expression::Number(-2.0))
+            )),
             result.0,
             "function 21,\n history = {:?}",
             result.1
@@ -1330,15 +1326,13 @@ mod tests_tokenization {
 
         result = tokenization("2sqrt(4)sqrt(4)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(4.0),
-                Instruction::Function(Functions::Sqrt),
-                Instruction::Multiplication,
-                Instruction::Number(4.0),
-                Instruction::Function(Functions::Sqrt),
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::multiplication(
+                    Expression::Number(2.0),
+                    Expression::sqrt(Expression::Number(4.0))
+                ),
+                Expression::sqrt(Expression::Number(4.0))
+            )),
             result.0,
             "function 22,\n history = {:?}",
             result.1
@@ -1346,12 +1340,10 @@ mod tests_tokenization {
 
         result = tokenization("2sqrt(4)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(4.0),
-                Instruction::Function(Functions::Sqrt),
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::Number(2.0),
+                Expression::sqrt(Expression::Number(4.0))
+            )),
             result.0,
             "function 23,\n history = {:?}",
             result.1
@@ -1359,12 +1351,10 @@ mod tests_tokenization {
 
         result = tokenization("-sqrt(4)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(-1.0),
-                Instruction::Number(4.0),
-                Instruction::Function(Functions::Sqrt),
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::Number(-1.0),
+                Expression::sqrt(Expression::Number(4.0))
+            )),
             result.0,
             "function 24,\n history = {:?}",
             result.1
@@ -1375,11 +1365,10 @@ mod tests_tokenization {
     fn variable() {
         let mut result = tokenization("2a");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Variable('a'),
-                Instruction::Multiplication
-            ]),
+            Ok(Expression::multiplication(
+                Expression::Number(2.0),
+                Expression::Variable('a')
+            )),
             result.0,
             "variable 1, \n history = {:?}",
             result.1
@@ -1387,13 +1376,10 @@ mod tests_tokenization {
 
         result = tokenization("2a+4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Variable('a'),
-                Instruction::Multiplication,
-                Instruction::Number(4.0),
-                Instruction::Addition,
-            ]),
+            Ok(Expression::addition(
+                Expression::multiplication(Expression::Number(2.0), Expression::Variable('a')),
+                Expression::Number(4.0)
+            )),
             result.0,
             "variable 2, \n history = {:?}",
             result.1
@@ -1401,13 +1387,10 @@ mod tests_tokenization {
 
         result = tokenization("2a(5)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Variable('a'),
-                Instruction::Multiplication,
-                Instruction::Number(5.0),
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::multiplication(Expression::Number(2.0), Expression::Variable('a')),
+                Expression::Number(5.0),
+            ),),
             result.0,
             "variable 3, \n history = {:?}",
             result.1
@@ -1415,12 +1398,10 @@ mod tests_tokenization {
 
         result = tokenization("2asin(5)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(5.0),
-                Instruction::Function(Functions::Asin),
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::Number(2.0),
+                Expression::asin(Expression::Number(5.0))
+            )),
             result.0,
             "variable 4, \n history = {:?}",
             result.1
@@ -1428,14 +1409,10 @@ mod tests_tokenization {
 
         result = tokenization("2Asin(5)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Variable('A'),
-                Instruction::Multiplication,
-                Instruction::Number(5.0),
-                Instruction::Function(Functions::Sin),
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::multiplication(Expression::Number(2.0), Expression::Variable('A')),
+                Expression::sin(Expression::Number(5.0))
+            )),
             result.0,
             "variable 5, \n history = {:?}",
             result.1
@@ -1459,13 +1436,10 @@ mod tests_tokenization {
 
         result = tokenization("abc");
         assert_eq!(
-            Ok(vec![
-                Instruction::Variable('a'),
-                Instruction::Variable('b'),
-                Instruction::Multiplication,
-                Instruction::Variable('c'),
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::multiplication(Expression::Variable('a'), Expression::Variable('b')),
+                Expression::Variable('c')
+            )),
             result.0,
             "variable 8, \n history = {:?}",
             result.1
@@ -1473,13 +1447,10 @@ mod tests_tokenization {
 
         result = tokenization("a*b*c");
         assert_eq!(
-            Ok(vec![
-                Instruction::Variable('a'),
-                Instruction::Variable('b'),
-                Instruction::Multiplication,
-                Instruction::Variable('c'),
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::multiplication(Expression::Variable('a'), Expression::Variable('b')),
+                Expression::Variable('c')
+            )),
             result.0,
             "variable 9, \n history = {:?}",
             result.1
@@ -1487,35 +1458,33 @@ mod tests_tokenization {
 
         result = tokenization("abc(abc)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Variable('a'),
-                Instruction::Variable('b'),
-                Instruction::Multiplication,
-                Instruction::Variable('c'),
-                Instruction::Multiplication,
-                Instruction::Variable('a'),
-                Instruction::Variable('b'),
-                Instruction::Multiplication,
-                Instruction::Variable('c'),
-                Instruction::Multiplication,
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::multiplication(
+                    Expression::multiplication(
+                        Expression::Variable('a'),
+                        Expression::Variable('b')
+                    ),
+                    Expression::Variable('c')
+                ),
+                Expression::multiplication(
+                    Expression::multiplication(
+                        Expression::Variable('a'),
+                        Expression::Variable('b')
+                    ),
+                    Expression::Variable('c')
+                )
+            )),
             result.0,
             "variable 10, \n history = {:?}",
             result.1
         );
-        
+
         result = tokenization("(a-b)(a+b)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Variable('a'),
-                Instruction::Variable('b'),
-                Instruction::Subtraction,
-                Instruction::Variable('a'),
-                Instruction::Variable('b'),
-                Instruction::Addition,
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::subtraction(Expression::Variable('a'), Expression::Variable('b')),
+                Expression::addition(Expression::Variable('a'), Expression::Variable('b'))
+            )),
             result.0,
             "variable 11, \n history = {:?}",
             result.1
@@ -1523,17 +1492,13 @@ mod tests_tokenization {
 
         result = tokenization("(a-b)(a+-b)");
         assert_eq!(
-            Ok(vec![
-                Instruction::Variable('a'),
-                Instruction::Variable('b'),
-                Instruction::Subtraction,
-                Instruction::Variable('a'),
-                Instruction::Number(-1.0),
-                Instruction::Variable('b'),
-                Instruction::Multiplication,
-                Instruction::Addition,
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::subtraction(Expression::Variable('a'), Expression::Variable('b')),
+                Expression::addition(
+                    Expression::Variable('a'),
+                    Expression::multiplication(Expression::Number(-1.0), Expression::Variable('b'))
+                )
+            )),
             result.0,
             "variable 12, \n history = {:?}",
             result.1
@@ -1541,11 +1506,10 @@ mod tests_tokenization {
 
         result = tokenization("-a");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(-1.0),
-                Instruction::Variable('a'),
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::Number(-1.0),
+                Expression::Variable('a')
+            )),
             result.0,
             "variable 13, \n history = {:?}",
             result.1
@@ -1553,33 +1517,27 @@ mod tests_tokenization {
 
         result = tokenization("2*-a");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(2.0),
-                Instruction::Number(-1.0),
-                Instruction::Multiplication,
-                Instruction::Variable('a'),
-                Instruction::Multiplication,
-            ]),
+            Ok(Expression::multiplication(
+                Expression::multiplication(Expression::Number(2.0), Expression::Number(-1.0)),
+                Expression::Variable('a')
+            )),
             result.0,
             "variable 14, \n history = {:?}",
             result.1
         );
-        
+
         result = tokenization("a*-a+a*-a");
         assert_eq!(
-            Ok(vec![
-                Instruction::Variable('a'),
-                Instruction::Number(-1.0),
-                Instruction::Multiplication,
-                Instruction::Variable('a'),
-                Instruction::Multiplication,
-                Instruction::Variable('a'),
-                Instruction::Number(-1.0),
-                Instruction::Multiplication,
-                Instruction::Variable('a'),
-                Instruction::Multiplication,
-                Instruction::Addition,
-            ]),
+            Ok(Expression::addition(
+                Expression::multiplication(
+                    Expression::multiplication(Expression::Variable('a'), Expression::Number(-1.0),),
+                    Expression::Variable('a')
+                ),
+                Expression::multiplication(
+                    Expression::multiplication(Expression::Variable('a'), Expression::Number(-1.0),),
+                    Expression::Variable('a')
+                )
+            )),
             result.0,
             "variable 15, \n history = {:?}",
             result.1
@@ -1590,19 +1548,19 @@ mod tests_tokenization {
     fn operation_priority() {
         let mut result = tokenization("16a^2+16a+4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(16.0),
-                Instruction::Variable('a'),
-                Instruction::Number(2.0),
-                Instruction::Exponentiation,
-                Instruction::Multiplication,
-                Instruction::Number(16.0),
-                Instruction::Variable('a'),
-                Instruction::Multiplication,
-                Instruction::Addition,
-                Instruction::Number(4.0),
-                Instruction::Addition,
-            ]),
+            Ok(Expression::addition(
+                Expression::addition(
+                    Expression::multiplication(
+                        Expression::Number(16.0),
+                        Expression::exponentiation(
+                            Expression::variable('a'),
+                            Expression::number(2.0)
+                        )
+                    ),
+                    Expression::multiplication(Expression::Number(16.0), Expression::variable('a'))
+                ),
+                Expression::Number(4.0)
+            )),
             result.0,
             "operation_priority 1 \n history = {:?}",
             result.1
@@ -1610,19 +1568,19 @@ mod tests_tokenization {
 
         result = tokenization("16*2^2+16*2+4");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(16.0),
-                Instruction::Number(2.0),
-                Instruction::Number(2.0),
-                Instruction::Exponentiation,
-                Instruction::Multiplication,
-                Instruction::Number(16.0),
-                Instruction::Number(2.0),
-                Instruction::Multiplication,
-                Instruction::Addition,
-                Instruction::Number(4.0),
-                Instruction::Addition,
-            ]),
+            Ok(Expression::addition(
+                Expression::addition(
+                    Expression::multiplication(
+                        Expression::Number(16.0),
+                        Expression::exponentiation(
+                            Expression::number(2.0),
+                            Expression::number(2.0)
+                        )
+                    ),
+                    Expression::multiplication(Expression::Number(16.0), Expression::Number(2.0))
+                ),
+                Expression::Number(4.0)
+            )),
             result.0,
             "operation_priority 2 \n history = {:?}",
             result.1
@@ -1630,25 +1588,31 @@ mod tests_tokenization {
 
         result = tokenization("16*2*3*3^2+5*4*4+5");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(16.0),
-                Instruction::Number(2.0),
-                Instruction::Multiplication,
-                Instruction::Number(3.0),
-                Instruction::Multiplication,
-                Instruction::Number(3.0),
-                Instruction::Number(2.0),
-                Instruction::Exponentiation,
-                Instruction::Multiplication,
-                Instruction::Number(5.0),
-                Instruction::Number(4.0),
-                Instruction::Multiplication,
-                Instruction::Number(4.0),
-                Instruction::Multiplication,
-                Instruction::Addition,
-                Instruction::Number(5.0),
-                Instruction::Addition,
-            ]),
+            Ok(Expression::addition(
+                Expression::addition(
+                    Expression::multiplication(
+                        Expression::multiplication(
+                            Expression::multiplication(
+                                Expression::Number(16.0),
+                                Expression::Number(2.0)
+                            ),
+                            Expression::Number(3.0)
+                        ),
+                        Expression::exponentiation(
+                            Expression::Number(3.0),
+                            Expression::Number(2.0)
+                        )
+                    ),
+                    Expression::multiplication(
+                        Expression::multiplication(
+                            Expression::Number(5.0),
+                            Expression::Number(4.0)
+                        ),
+                        Expression::Number(4.0)
+                    )
+                ),
+                Expression::Number(5.0)
+            )),
             result.0,
             "operation_priority 3 \n history = {:?}",
             result.1
@@ -1656,25 +1620,31 @@ mod tests_tokenization {
 
         result = tokenization("16*abb^a+dcc+d");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(16.0),
-                Instruction::Variable('a'),
-                Instruction::Multiplication,
-                Instruction::Variable('b'),
-                Instruction::Multiplication,
-                Instruction::Variable('b'),
-                Instruction::Variable('a'),
-                Instruction::Exponentiation,
-                Instruction::Multiplication,
-                Instruction::Variable('d'),
-                Instruction::Variable('c'),
-                Instruction::Multiplication,
-                Instruction::Variable('c'),
-                Instruction::Multiplication,
-                Instruction::Addition,
-                Instruction::Variable('d'),
-                Instruction::Addition,
-            ]),
+            Ok(Expression::addition(
+                Expression::addition(
+                    Expression::multiplication(
+                        Expression::multiplication(
+                            Expression::multiplication(
+                                Expression::Number(16.0),
+                                Expression::Variable('a')
+                            ),
+                            Expression::Variable('b')
+                        ),
+                        Expression::exponentiation(
+                            Expression::Variable('b'),
+                            Expression::Variable('a')
+                        )
+                    ),
+                    Expression::multiplication(
+                        Expression::multiplication(
+                            Expression::Variable('d'),
+                            Expression::Variable('c')
+                        ),
+                        Expression::Variable('c')
+                    )
+                ),
+                Expression::Variable('d')
+            )),
             result.0,
             "operation_priority 4 \n history = {:?}",
             result.1
@@ -1682,162 +1652,34 @@ mod tests_tokenization {
 
         result = tokenization("16*sqrt(4)log2(8)log2(8)^sqrt(4)+5*4*4+5");
         assert_eq!(
-            Ok(vec![
-                Instruction::Number(16.0),
-                Instruction::Number(4.0),
-                Instruction::Function(Functions::Sqrt),
-                Instruction::Multiplication,
-                Instruction::Number(8.0),
-                Instruction::Function(Functions::Log2),
-                Instruction::Multiplication,
-                Instruction::Number(8.0),
-                Instruction::Function(Functions::Log2),
-                Instruction::Number(4.0),
-                Instruction::Function(Functions::Sqrt),
-                Instruction::Exponentiation,
-                Instruction::Multiplication,
-                Instruction::Number(5.0),
-                Instruction::Number(4.0),
-                Instruction::Multiplication,
-                Instruction::Number(4.0),
-                Instruction::Multiplication,
-                Instruction::Addition,
-                Instruction::Number(5.0),
-                Instruction::Addition,
-            ]),
+            Ok(Expression::addition(
+                Expression::addition(
+                    Expression::multiplication(
+                        Expression::multiplication(
+                            Expression::multiplication(
+                                Expression::Number(16.0),
+                                Expression::sqrt(Expression::Number(4.0))
+                            ),
+                            Expression::log2(Expression::Number(8.0))
+                        ),
+                        Expression::exponentiation(
+                            Expression::log2(Expression::Number(8.0)),
+                            Expression::sqrt(Expression::Number(4.0))
+                        )
+                    ),
+                    Expression::multiplication(
+                        Expression::multiplication(
+                            Expression::Number(5.0),
+                            Expression::Number(4.0)
+                        ),
+                        Expression::Number(4.0)
+                    )
+                ),
+                Expression::Number(5.0)
+            )),
             result.0,
             "operation_priority 5 \n history = {:?}",
             result.1
-        );
-    }
-}
-
-#[cfg(test)]
-mod tests_untokenization {
-    use crate::tokenizer::{Functions, Instruction, untokenization};
-
-    #[test]
-    fn ok() {
-        let mut result = untokenization(vec![
-            Instruction::Number(-2.0),
-            Instruction::Number(4.0),
-            Instruction::Addition,
-        ]);
-        assert_eq!(
-            Ok("-2+4".to_string()),
-            result,
-            "ok 1"
-        );
-
-        result = untokenization(vec![
-            Instruction::Number(2.0),
-            Instruction::Number(4.0),
-            Instruction::Multiplication,
-            Instruction::Number(6.0),
-            Instruction::Addition,
-            Instruction::Number(2.0),
-            Instruction::Number(4.0),
-            Instruction::Multiplication,
-            Instruction::Number(6.0),
-            Instruction::Addition,
-            Instruction::Multiplication,
-        ]);
-        assert_eq!(
-            Ok("((2*4)+6)*((2*4)+6)".to_string()),
-            result,
-            "ok 2"
-        );
-        result = untokenization(vec![
-            Instruction::Number(2.0),
-            Instruction::Number(5.0),
-            Instruction::Function(Functions::Asin),
-            Instruction::Multiplication,
-        ]);
-        assert_eq!(
-            Ok("2*asin(5)".to_string()),
-            result,
-            "ok 3"
-        );
-
-        result = untokenization(vec![
-            Instruction::Number(2.0),
-            Instruction::Number(3.0),
-            Instruction::Number(4.0),
-            Instruction::Addition,
-            Instruction::Multiplication,
-            Instruction::Number(4.0),
-            Instruction::Addition,
-        ]);
-        assert_eq!(
-            Ok("(2*(3+4))+4".to_string()),
-            result,
-            "ok 4"
-        );
-        
-        result = untokenization(vec![
-            Instruction::Number(2.0),
-            Instruction::Number(-1.0),
-            Instruction::Multiplication,
-            Instruction::Number(4.0),
-            Instruction::Function(Functions::Sqrt),
-            Instruction::Multiplication,
-            Instruction::Number(2.0),
-            Instruction::Number(-2.0),
-            Instruction::Exponentiation,
-            Instruction::Multiplication,
-        ]);
-        assert_eq!(
-            Ok("((2*-1)*sqrt(4))*(2^-2)".to_string()),
-            result,
-            "ok 5"
-        );
-
-        result = untokenization(vec![
-                Instruction::Number(16.0),
-                Instruction::Variable('a'),
-                Instruction::Number(2.0),
-                Instruction::Exponentiation,
-                Instruction::Multiplication,
-                Instruction::Number(16.0),
-                Instruction::Variable('a'),
-                Instruction::Multiplication,
-                Instruction::Addition,
-                Instruction::Number(4.0),
-                Instruction::Addition,
-        ]);
-        assert_eq!(
-            Ok("((16*(a^2))+(16*a))+4".to_string()),
-            result,
-            "ok 6"
-        );
-
-        result = untokenization(vec![
-                Instruction::Number(16.0),
-                Instruction::Number(4.0),
-                Instruction::Function(Functions::Sqrt),
-                Instruction::Multiplication,
-                Instruction::Number(8.0),
-                Instruction::Function(Functions::Log2),
-                Instruction::Multiplication,
-                Instruction::Number(8.0),
-                Instruction::Function(Functions::Log2),
-                Instruction::Number(4.0),
-                Instruction::Function(Functions::Sqrt),
-                Instruction::Exponentiation,
-                Instruction::Multiplication,
-                Instruction::Number(5.0),
-                Instruction::Number(4.0),
-                Instruction::Multiplication,
-                Instruction::Number(4.0),
-                Instruction::Multiplication,
-                Instruction::Addition,
-                Instruction::Number(5.0),
-                Instruction::Addition,
-        ]);
-        assert_eq!(
-            Ok("((((16*sqrt(4))*log2(8))*(log2(8)^sqrt(4)))+((5*4)*4))+5".to_string()),
-            result,
-            "ok 7"
         );
     }
 }
