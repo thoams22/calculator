@@ -1,22 +1,25 @@
 use crate::tokenizer::CalcError;
 
 use self::addition::Addition;
+use self::constant::Constant;
 use self::division::Division;
 use self::exponentiation::Exponentiation;
 use self::function::Function;
 use self::multiplication::Multiplication;
 
 mod addition;
+pub(crate) mod constant;
 mod division;
 mod exponentiation;
 pub(crate) mod function;
+pub(crate) mod math;
 mod multiplication;
-mod math;
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum Expression {
     Number(f64),
     Variable(char),
+    Constant(Constant),
     Addition(Box<Addition>),
     Multiplication(Box<Multiplication>),
     Division(Box<Division>),
@@ -107,6 +110,18 @@ impl Expression {
     pub fn log(base: Expression, expr: Expression) -> Expression {
         Expression::Function(Box::new(Function::log(base, expr)))
     }
+
+    pub fn e() -> Expression {
+        Expression::Constant(Constant::e())
+    }
+
+    pub fn pi() -> Expression {
+        Expression::Constant(Constant::pi())
+    }
+
+    pub fn phi() -> Expression {
+        Expression::Constant(Constant::phi())
+    }
 }
 
 impl Expression {
@@ -114,6 +129,7 @@ impl Expression {
         match self {
             Expression::Number(_) => self,
             Expression::Variable(_) => self,
+            Expression::Constant(_) => self,
             Expression::Addition(addition) => addition.simplify(),
             Expression::Multiplication(multiplication) => multiplication.simplify(),
             Expression::Division(division) => division.simplify(),
@@ -126,6 +142,7 @@ impl Expression {
         match self {
             Expression::Number(_) => 1,
             Expression::Variable(_) => 1,
+            Expression::Constant(_) => 1,
             Expression::Addition(addition) => addition.len(),
             Expression::Multiplication(multiplication) => multiplication.len(),
             Expression::Division(division) => division.len(),
@@ -138,6 +155,7 @@ impl Expression {
         match self {
             Expression::Number(number) => Some(Expression::Number(*number)),
             Expression::Variable(variable) => Some(Expression::Variable(*variable)),
+            Expression::Constant(_) => Some(self.clone()),
             Expression::Addition(addition) => addition.get(index).cloned(),
             Expression::Multiplication(multiplication) => multiplication.get(index).cloned(),
             Expression::Division(division) => division.get(index).cloned(),
@@ -164,6 +182,14 @@ impl Expression {
                 }
                 false
             }
+            Expression::Constant(constant) => {
+                if let Expression::Constant(constant_2) = other {
+                    if constant == constant_2 {
+                        return true;
+                    }
+                }
+                false
+            }
             Expression::Addition(addition) => addition.equal(other),
             Expression::Multiplication(multiplication) => multiplication.equal(other),
             Expression::Division(division) => division.equal(other),
@@ -176,6 +202,7 @@ impl Expression {
         match self {
             Expression::Number(number) => Ok(*number),
             Expression::Variable(_) => Err(CalcError::UnevaluableToken),
+            Expression::Constant(constant) => constant.evaluate(),
             Expression::Addition(addition) => addition.evaluate(),
             Expression::Multiplication(multiplication) => multiplication.evaluate(),
             Expression::Division(division) => division.evaluate(),
@@ -188,6 +215,7 @@ impl Expression {
         match self {
             Expression::Number(number) => Ok(number.to_string()),
             Expression::Variable(variable) => Ok(variable.to_string()),
+            Expression::Constant(constant) => Ok(constant.to_string()),
             Expression::Addition(addition) => addition.to_string(),
             Expression::Multiplication(multiplication) => multiplication.to_string(),
             Expression::Division(division) => division.to_string(),
@@ -935,6 +963,135 @@ mod tests_expression {
                 )
             )),
             "mulltiple_basic_mult 10 \n result : {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn logarithme() {
+        let mut result = Expression::ln(Expression::e()).simplify();
+        assert!(
+            result.equal(&Expression::Number(1.0)),
+            "logarithme 1\n {:?}",
+            result
+        );
+
+        result = Expression::log10(Expression::Number(10.0)).simplify();
+        assert!(
+            result.equal(&Expression::Number(1.0)),
+            "logarithme 2\n {:?}",
+            result
+        );
+
+        result = Expression::log2(Expression::Number(2.0)).simplify();
+        assert!(
+            result.equal(&Expression::Number(1.0)),
+            "logarithme 3\n {:?}",
+            result
+        );
+
+        result = Expression::log(Expression::Number(20.0), Expression::Number(20.0)).simplify();
+        assert!(
+            result.equal(&Expression::Number(1.0)),
+            "logarithme 4\n {:?}",
+            result
+        );
+
+        result = Expression::ln(Expression::Number(1.0)).simplify();
+        assert!(
+            result.equal(&Expression::Number(0.0)),
+            "logarithme 5\n {:?}",
+            result
+        );
+
+        result = Expression::log10(Expression::Number(1.0)).simplify();
+        assert!(
+            result.equal(&Expression::Number(0.0)),
+            "logarithme 6\n {:?}",
+            result
+        );
+
+        result = Expression::log2(Expression::Number(1.0)).simplify();
+        assert!(
+            result.equal(&Expression::Number(0.0)),
+            "logarithme 7\n {:?}",
+            result
+        );
+
+        result = Expression::log(Expression::Number(20.0), Expression::Number(1.0)).simplify();
+        assert!(
+            result.equal(&Expression::Number(0.0)),
+            "logarithme 8\n {:?}",
+            result
+        );
+
+        result = Expression::ln(Expression::exponentiation(
+            Expression::e(),
+            Expression::Number(3.0),
+        ))
+        .simplify();
+        assert!(
+            result.equal(&Expression::Number(3.0)),
+            "logarithme 9\n {:?}",
+            result
+        );
+
+        result = Expression::log10(Expression::exponentiation(
+            Expression::Number(10.0),
+            Expression::Number(3.0),
+        ))
+        .simplify();
+        assert!(
+            result.equal(&Expression::Number(3.0)),
+            "logarithme 10\n {:?}",
+            result
+        );
+
+        result = Expression::log2(Expression::exponentiation(
+            Expression::Number(2.0),
+            Expression::Number(3.0),
+        ))
+        .simplify();
+        assert!(
+            result.equal(&Expression::Number(3.0)),
+            "logarithme 11\n {:?}",
+            result
+        );
+
+        result = Expression::log(
+            Expression::Number(20.0),
+            Expression::exponentiation(Expression::Number(20.0), Expression::Number(3.0)),
+        )
+        .simplify();
+        assert!(
+            result.equal(&Expression::Number(3.0)),
+            "logarithme 12\n {:?}",
+            result
+        );
+
+        result = Expression::ln(Expression::exponentiation(
+            Expression::Number(8.0),
+            Expression::Number(3.0),
+        ))
+        .simplify();
+        assert!(
+            result.equal(&Expression::multiplication(
+                Expression::Number(9.0),
+                Expression::ln(Expression::Number(2.0))
+            )),
+            "logarithme 13\n {:?}",
+            result
+        );
+
+        result = Expression::ln(
+            Expression::Number(8.0))
+        .simplify();
+        assert!(
+            result.equal(&Expression::multiplication(
+                Expression::Number(3.0),
+                Expression::ln(Expression::Number(2.0))
+            )),
+            "logarithme 14\n {:?}",
             result
         );
     }

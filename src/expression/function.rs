@@ -1,6 +1,6 @@
 use crate::tokenizer::CalcError;
 
-use super::Expression;
+use super::{math::is_perfect_power, Expression};
 
 #[derive(PartialEq, PartialOrd, Debug, Clone, Copy)]
 pub enum Functions {
@@ -15,6 +15,13 @@ pub enum Functions {
     Asin,
     Acos,
     Atan,
+}
+
+#[derive(PartialEq, PartialOrd, Debug, Clone, Copy)]
+pub enum FunctionsType {
+    logarithm,
+    root,
+    trigonometric,
 }
 
 impl Functions {
@@ -39,6 +46,7 @@ impl Functions {
 pub struct Function {
     sub_expr: Vec<Expression>,
     function: Functions,
+    function_type: FunctionsType,
 }
 
 // constructor
@@ -47,6 +55,7 @@ impl Function {
         Self {
             sub_expr: vec![expr],
             function: Functions::Sqrt,
+            function_type: FunctionsType::root,
         }
     }
 
@@ -54,6 +63,7 @@ impl Function {
         Self {
             sub_expr: vec![expr],
             function: Functions::Ln,
+            function_type: FunctionsType::logarithm,
         }
     }
 
@@ -61,6 +71,7 @@ impl Function {
         Self {
             sub_expr: vec![expr],
             function: Functions::Log2,
+            function_type: FunctionsType::logarithm,
         }
     }
 
@@ -68,6 +79,7 @@ impl Function {
         Self {
             sub_expr: vec![expr],
             function: Functions::Log10,
+            function_type: FunctionsType::logarithm,
         }
     }
 
@@ -75,6 +87,7 @@ impl Function {
         Self {
             sub_expr: vec![expr],
             function: Functions::Sin,
+            function_type: FunctionsType::trigonometric,
         }
     }
 
@@ -82,36 +95,42 @@ impl Function {
         Self {
             sub_expr: vec![expr],
             function: Functions::Cos,
+            function_type: FunctionsType::trigonometric,
         }
     }
     pub fn tan(expr: Expression) -> Self {
         Self {
             sub_expr: vec![expr],
             function: Functions::Tan,
+            function_type: FunctionsType::trigonometric,
         }
     }
     pub fn atan(expr: Expression) -> Self {
         Self {
             sub_expr: vec![expr],
             function: Functions::Atan,
+            function_type: FunctionsType::trigonometric,
         }
     }
     pub fn acos(expr: Expression) -> Self {
         Self {
             sub_expr: vec![expr],
             function: Functions::Acos,
+            function_type: FunctionsType::trigonometric,
         }
     }
     pub fn asin(expr: Expression) -> Self {
         Self {
             sub_expr: vec![expr],
             function: Functions::Asin,
+            function_type: FunctionsType::trigonometric,
         }
     }
     pub fn log(base: Expression, expr: Expression) -> Self {
         Self {
             sub_expr: vec![base, expr],
             function: Functions::Log,
+            function_type: FunctionsType::logarithm,
         }
     }
 }
@@ -125,40 +144,151 @@ impl Function {
         self.sub_expr.get(index)
     }
 
-    pub fn swap_remove(&mut self, index: usize) {
+    pub fn get_function(&self) -> Functions {
+        self.function
+    }
+
+    pub fn get_type(&self) -> FunctionsType {
+        self.function_type
+    }
+
+    /// log(a, b) => Some(a)
+    ///
+    /// sqrt(a) => Some(2.0)
+    ///
+    /// other => None
+    pub fn get_base(&self) -> Option<Expression> {
+        match self.function_type {
+            FunctionsType::logarithm => match self.function {
+                Functions::Ln => Some(Expression::e()),
+                Functions::Log10 => Some(Expression::Number(10.0)),
+                Functions::Log2 => Some(Expression::Number(2.0)),
+                Functions::Log => Some(self.sub_expr[0].clone()),
+                _ => None,
+            },
+            FunctionsType::root => match self.function {
+                Functions::Sqrt => Some(Expression::Number(2.0)),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    pub fn get_expression(&self) -> Expression {
+        match self.function {
+            Functions::Log => self.sub_expr[1].clone(),
+            _ => self.sub_expr[0].clone(),
+        }
+    }
+
+    pub fn swap_remove(&mut self, index: usize) -> bool {
+        if index > self.function.argument().into() {
+            return false;
+        }
         self.sub_expr.swap_remove(index);
+        true
     }
 
-    pub fn remove(&mut self, index: usize) {
+    pub fn remove(&mut self, index: usize) -> bool {
+        if index > self.function.argument().into() {
+            return false;
+        }
         self.sub_expr.remove(index);
+        true
     }
 
-    pub fn add(&mut self, other: Expression) {
-        self.sub_expr.push(other)
-    }
-
-    pub fn insert(&mut self, index: usize, other: Expression) {
-        self.sub_expr.insert(index, other)
+    pub fn insert(&mut self, index: usize, other: Expression) -> bool {
+        if index > self.function.argument().into() {
+            return false;
+        }
+        self.sub_expr.insert(index, other);
+        true
     }
 
     pub fn equal(&self, other: &Expression) -> bool {
-        if let Expression::Addition(_) = other {
-            let mut count = 0;
-            'i: for i in 0..self.len() {
-                for j in 0..other.len() {
-                    if self.sub_expr[i].equal(&other.get(j).unwrap()) {
-                        count += 1;
-                        continue 'i;
+        if let Expression::Function(func) = other {
+            if func.get_function() == self.get_function() && self.len() == other.len() {
+                let len = self.len();
+                let mut index: Vec<bool> = vec![false; len * 2];
+                'i: for i in 0..len {
+                    for j in 0..len {
+                        if self.sub_expr[i].equal(&other.get(j).unwrap())
+                            && !(index[i] || index[j + len])
+                        {
+                            index[i] = true;
+                            index[j + len] = true;
+                            continue 'i;
+                        }
                     }
+                    return false;
                 }
-                return false;
+                return index.iter().all(|&x| x);
             }
-
-            return count == self.len();
         }
         false
     }
-    pub fn simplify(self) -> Expression {
+
+    pub fn simplify(mut self) -> Expression {
+        for expression in self.sub_expr.iter_mut() {
+            *expression = expression.clone().simplify();
+        }
+        match self.function_type {
+            FunctionsType::logarithm => self.simplify_logarithm(),
+            _ => Expression::Function(Box::new(self)),
+        }
+    }
+
+    fn simplify_logarithm(self) -> Expression {
+        match self.function {
+            Functions::Log | Functions::Ln | Functions::Log10 | Functions::Log2 => {
+                if self.get_base().unwrap().equal(&self.get_expression()) {
+                    return Expression::Number(1.0);
+                } else if self.get_expression() == Expression::Number(1.0) {
+                    return Expression::Number(0.0);
+                } else if let Expression::Number(num) = &self.get_expression() {
+                    if let Some((root, exponent)) = is_perfect_power(num) {
+                        if Expression::Number(root) == self.get_base().unwrap() {
+                            return Expression::Number(exponent as f64);
+                        } else {
+                            return Expression::multiplication(
+                                Expression::Number(exponent as f64),
+                                Expression::Function(Box::new(Function {
+                                    sub_expr: vec![Expression::Number(root)],
+                                    function: self.function,
+                                    function_type: self.function_type,
+                                })),
+                            );
+                        }
+                    }
+                } else if let Expression::Exponentiation(expr) = &self.get_expression() {
+                    if expr.get_base() == self.get_base().unwrap() {
+                        return expr.get_exponent();
+                    } else if let Expression::Number(num) = expr.get_base() {
+                        if let Some((root, exponent)) = is_perfect_power(&num) {
+                            if Expression::Number(root) == self.get_base().unwrap() {
+                                return Expression::multiplication(
+                                    expr.get_exponent(),
+                                    Expression::Number(exponent as f64),
+                                )
+                                .simplify();
+                            } else {
+                                return Expression::multiplication_from_vec(vec![
+                                    Expression::Number(exponent as f64),
+                                    expr.get_exponent(),
+                                    Expression::Function(Box::new(Function {
+                                        sub_expr: vec![Expression::Number(root)],
+                                        function: self.function,
+                                        function_type: self.function_type,
+                                    })),
+                                ])
+                                .simplify();
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
         Expression::Function(Box::new(self))
     }
 
@@ -176,7 +306,7 @@ impl Function {
                             if argument.is_empty() {
                                 argument.push(number);
                             } else {
-                                result = argument[0].log(number);
+                                result = number.log(argument[0]);
                             }
                         }
                         Functions::Sqrt => result = number.sqrt(),
@@ -195,38 +325,51 @@ impl Function {
     }
 
     pub fn to_string(&self) -> Result<String, CalcError> {
-        let mut result: String = String::from("(");
+        let mut result: String = String::new();
         let mut argument: Vec<String> = Vec::new();
-        
+
+        match self.function {
+            Functions::Ln => result += "ln(",
+            Functions::Log2 => result += "log2(",
+            Functions::Log10 => result += "log10(",
+            Functions::Log => result += "log(",
+            Functions::Sqrt => result += "sqrt(",
+            Functions::Sin => result += "sin(",
+            Functions::Cos => result += "cos(",
+            Functions::Tan => result += "tan(",
+            Functions::Asin => result += "asin(",
+            Functions::Acos => result += "acos(",
+            Functions::Atan => result += "atan(",
+        };
+
         for ele in &self.sub_expr {
             match ele.to_string() {
                 Ok(number) => {
-                    match self.function {
-                        Functions::Ln => result += &format!("ln({number})"),
-                        Functions::Log2 => result += &format!("log2({number})"),
-                        Functions::Log10 => result += &format!("log10({number})"),
-                        Functions::Log => {
-                            if argument.is_empty() {
-                                argument.push(number);
-                            } else {
-                                result += &format!("log({}{number})", argument[0]);
-                            }
-                        }
-                        Functions::Sqrt => result += &format!("sqrt({number})"),
-                        Functions::Sin => result += &format!("sin({number})"),
-                        Functions::Cos => result += &format!("cos({number})"),
-                        Functions::Tan => result += &format!("tan({number})"),
-                        Functions::Asin => result += &format!("asin({number})"),
-                        Functions::Acos => result += &format!("acos({number})"),
-                        Functions::Atan => result += &format!("atan({number})"),
-                    };
+                    argument.push(number);
                 }
                 Err(err) => return Err(err),
             }
         }
+        result += &argument.join(", ");
 
         result += ")";
         Ok(result)
-    } 
+    }
+}
 
+pub fn is_function(token: &str) -> Option<Functions> {
+    match token {
+        "ln" => Some(Functions::Ln),
+        "log2" => Some(Functions::Log2),
+        "log10" => Some(Functions::Log10),
+        "log" => Some(Functions::Log),
+        "sqrt" => Some(Functions::Sqrt),
+        "sin" => Some(Functions::Sin),
+        "cos" => Some(Functions::Cos),
+        "tan" => Some(Functions::Tan),
+        "asin" => Some(Functions::Asin),
+        "acos" => Some(Functions::Acos),
+        "atan" => Some(Functions::Atan),
+        _ => None,
+    }
 }

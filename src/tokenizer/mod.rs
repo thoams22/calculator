@@ -1,4 +1,8 @@
-use crate::expression::{function::Functions, Expression};
+use crate::expression::{
+    constant::{is_constant, Constant, Constants},
+    function::{is_function, Functions},
+    Expression,
+};
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum CalcError {
@@ -12,7 +16,7 @@ pub enum CalcError {
     MissingExpression,
 }
 
-#[derive(PartialEq, PartialOrd, Debug, Clone, Copy)]
+#[derive(PartialEq, PartialOrd, Debug, Clone)]
 pub enum Instruction {
     LeftParenthesis,
     ImplicitMultiplication,
@@ -25,13 +29,19 @@ pub enum Instruction {
     Function(Functions),
     Number(f64),
     Variable(char),
+    Constant(Constants),
+    Comma,
+}
+
+enum FunctionOrConstant {
+    Function(Functions),
+    Constant(Constants),
 }
 
 fn instruction_to_expression(
     last_instruction: &Instruction,
     tokenised: &mut Vec<Expression>,
 ) -> Result<Expression, CalcError> {
-    // println!("tokenized : {:?}", tokenised);
     match last_instruction {
         Instruction::Addition => {
             let y = tokenised.pop().ok_or(CalcError::MissingExpression)?;
@@ -97,6 +107,9 @@ fn instruction_to_expression(
         },
         Instruction::Number(num) => Ok(Expression::number(*num)),
         Instruction::Variable(var) => Ok(Expression::variable(*var)),
+        Instruction::Constant(constant) => {
+            Ok(Expression::Constant(Constant::from_constants(*constant)))
+        }
         _ => Err(CalcError::BadInstructionToExpressionConvertion),
     }
 }
@@ -111,21 +124,11 @@ fn precedence(token: &Instruction) -> u8 {
     }
 }
 
-// function supported in Lowercase if in uppercase will not be detected as function but as variable
-fn is_function(token: &str) -> Option<Instruction> {
-    match token {
-        "ln(" => Some(Instruction::Function(Functions::Ln)),
-        "log2(" => Some(Instruction::Function(Functions::Log2)),
-        "log10(" => Some(Instruction::Function(Functions::Log10)),
-        "log(" => Some(Instruction::Function(Functions::Log)),
-        "sqrt(" => Some(Instruction::Function(Functions::Sqrt)),
-        "sin(" => Some(Instruction::Function(Functions::Sin)),
-        "cos(" => Some(Instruction::Function(Functions::Cos)),
-        "tan(" => Some(Instruction::Function(Functions::Tan)),
-        "asin(" => Some(Instruction::Function(Functions::Asin)),
-        "acos(" => Some(Instruction::Function(Functions::Acos)),
-        "atan(" => Some(Instruction::Function(Functions::Atan)),
-        _ => None,
+fn get_function_or_constant(name: &str) -> Option<FunctionOrConstant> {
+    if let Some(function) = is_function(name) {
+        Some(FunctionOrConstant::Function(function))
+    } else {
+        is_constant(name).map(FunctionOrConstant::Constant)
     }
 }
 
@@ -134,90 +137,69 @@ fn try_parse_f64(
     instruction_stack: &mut Vec<Instruction>,
     history: &mut Vec<Instruction>,
     tokenized: &mut Vec<Expression>,
-) -> Option<CalcError> {
+) -> Result<(), CalcError> {
     match current_number.parse::<f64>() {
         Ok(number) => {
             tokenized.push(Expression::Number(number));
-            if Some(&Instruction::ImplicitMultiplication) == history.last() {
-                let y = match tokenized.pop().ok_or(CalcError::MissingExpression) {
-                    Ok(ok) => ok,
-                    Err(err) => return Some(err),
-                };
-                let x = match tokenized.pop().ok_or(CalcError::MissingExpression) {
-                    Ok(ok) => ok,
-                    Err(err) => return Some(err),
-                };
+            if let Some(&Instruction::ImplicitMultiplication) = history.last() {
+                let y = tokenized.pop().ok_or(CalcError::MissingExpression)?;
+                let x = tokenized.pop().ok_or(CalcError::MissingExpression)?;
                 instruction_stack.pop();
                 tokenized.push(Expression::multiplication(x, y))
             }
             history.push(Instruction::Number(number));
             current_number.clear();
-            None
+            Ok(())
         }
-        Err(_) => Some(CalcError::BadFloatParsing),
+        Err(_) => Err(CalcError::BadFloatParsing),
     }
 }
 
 fn try_parse_variable(
     current_function: &mut String,
     instruction_stack: &mut Vec<Instruction>,
-    history: &mut Vec<Instruction>,
+    mut history: Vec<Instruction>,
     mut tokenized: Vec<Expression>,
-) -> Result<Vec<Expression>, CalcError> {
+) -> (Result<Vec<Expression>, CalcError>, Vec<Instruction>) {
     let binding = current_function.clone();
-
     for token in binding.chars() {
         // check if current_function is a function
-        if let Some(result) = is_function(current_function) {
-            // check if implicit multiplication with last token
-            if let Some(last_history) = history.last() {
-                match last_history {
-                    Instruction::Number(_)
-                    | Instruction::RightParenthesis
-                    | Instruction::Variable(_) => {
-                        // for left to right order of operation
-                        if let Some(last_instruction) = instruction_stack.last() {
-                            if precedence(last_instruction) >= 3 {
-                                match instruction_to_expression(last_instruction, &mut tokenized) {
-                                    Ok(expr) => {
-                                        tokenized.push(expr);
-                                        instruction_stack.pop();
-                                    }
-                                    Err(error) => return Err(error),
-                                }
-                            }
-                        }
-                        instruction_stack.push(Instruction::Multiplication);
-                        history.push(Instruction::ImplicitMultiplication);
-                    }
-                    _ => {}
+        if let Some(function) = get_function_or_constant(current_function.trim_end_matches('(')) {
+            // Handle implicit multiplication if needed
+            match handle_implicit_multiplication(instruction_stack, tokenized, history) {
+                (Ok(retured_tokenized), retured_history) => {
+                    tokenized = retured_tokenized;
+                    history = retured_history;
+                }
+                (Err(error), history) => return (Err(error), history),
+            }
+
+            // Push the function or constant
+            match function {
+                FunctionOrConstant::Function(func) => {
+                    instruction_stack.push(Instruction::Function(func));
+                    instruction_stack.push(Instruction::LeftParenthesis);
+                    history.push(Instruction::Function(func));
+                    history.push(Instruction::LeftParenthesis);
+                }
+                FunctionOrConstant::Constant(constant) => {
+                    tokenized.push(Expression::Constant(Constant::from_constants(constant)));
+                    history.push(Instruction::Constant(constant));
                 }
             }
-            // push parenthesis and function
-            instruction_stack.push(Instruction::LeftParenthesis);
-            instruction_stack.push(result);
-            history.push(result);
-            history.push(Instruction::LeftParenthesis);
+            current_function.clear();
             // return because when funtion found we are a the end of current_function
-            return Ok(tokenized);
+            return (Ok(tokenized), history);
         }
         match token {
             '(' => {
                 // check for implicit multiplication
-                if let Some(Instruction::Variable(_)) = history.last() {
-                    if let Some(last_instruction) = instruction_stack.last() {
-                        if precedence(last_instruction) >= 3 {
-                            match instruction_to_expression(last_instruction, &mut tokenized) {
-                                Ok(expr) => {
-                                    tokenized.push(expr);
-                                    instruction_stack.pop();
-                                }
-                                Err(error) => return Err(error),
-                            }
-                        }
+                match handle_implicit_multiplication(instruction_stack, tokenized, history) {
+                    (Ok(retured_tokenized), retured_history) => {
+                        tokenized = retured_tokenized;
+                        history = retured_history;
                     }
-                    instruction_stack.push(Instruction::Multiplication);
-                    history.push(Instruction::ImplicitMultiplication);
+                    (Err(error), history) => return (Err(error), history),
                 }
                 // push parenthesis because we are a the end of current_function
                 instruction_stack.push(Instruction::LeftParenthesis);
@@ -225,42 +207,51 @@ fn try_parse_variable(
             }
             c if c.is_ascii_alphabetic() => {
                 // check for implicit multiplication
-                if let Some(last_history) = history.last() {
-                    match last_history {
-                        Instruction::Number(_)
-                        | Instruction::RightParenthesis
-                        | Instruction::Variable(_) => {
-                            if let Some(last_instruction) = instruction_stack.last() {
-                                if precedence(last_instruction) >= 3 {
-                                    match instruction_to_expression(
-                                        last_instruction,
-                                        &mut tokenized,
-                                    ) {
-                                        Ok(expr) => {
-                                            tokenized.push(expr);
-                                            instruction_stack.pop();
-                                        }
-                                        Err(error) => return Err(error),
-                                    }
-                                }
-                            }
-                            instruction_stack.push(Instruction::Multiplication);
-                            history.push(Instruction::ImplicitMultiplication);
-                        }
-                        _ => {}
+                match handle_implicit_multiplication(instruction_stack, tokenized, history) {
+                    (Ok(retured_tokenized), retured_history) => {
+                        tokenized = retured_tokenized;
+                        history = retured_history;
                     }
+                    (Err(error), history) => return (Err(error), history),
                 }
                 // push the variable
                 tokenized.push(Expression::Variable(c));
                 history.push(Instruction::Variable(c));
             }
-            _ => return Err(CalcError::BadVariableParsing),
+            _ => return (Err(CalcError::BadVariableParsing), history),
         }
         // remove the first char of current_function for the next is_function() check
         current_function.remove(0);
     }
     current_function.clear();
-    Ok(tokenized)
+    (Ok(tokenized), history)
+}
+
+fn handle_implicit_multiplication(
+    instruction_stack: &mut Vec<Instruction>,
+    mut tokenized: Vec<Expression>,
+    mut history: Vec<Instruction>,
+) -> (Result<Vec<Expression>, CalcError>, Vec<Instruction>) {
+    if let Some(Instruction::Number(_))
+    | Some(Instruction::Variable(_))
+    | Some(Instruction::RightParenthesis)
+    | Some(Instruction::Constant(_)) = history.last()
+    {
+        if let Some(last_instruction) = instruction_stack.last() {
+            if precedence(last_instruction) >= 3 {
+                match instruction_to_expression(last_instruction, &mut tokenized) {
+                    Ok(expr) => {
+                        tokenized.push(expr);
+                        instruction_stack.pop();
+                    }
+                    Err(error) => return (Err(error), history),
+                }
+            }
+        }
+        instruction_stack.push(Instruction::Multiplication);
+        history.push(Instruction::ImplicitMultiplication);
+    }
+    (Ok(tokenized), history)
 }
 
 pub fn tokenization(expression: &str) -> (Result<Expression, CalcError>, Vec<Instruction>) {
@@ -307,28 +298,26 @@ pub fn tokenization(expression: &str) -> (Result<Expression, CalcError>, Vec<Ins
         else if token.is_ascii_alphabetic() {
             // check if this was a number before and it is not yet push to tokenized
             if !current_number.is_empty() && current_number != "-" {
-                match try_parse_f64(
+                if let Err(error) = try_parse_f64(
                     &mut current_number,
                     &mut instruction_stack,
                     &mut history,
                     &mut tokenized,
                 ) {
-                    None => {}
-                    Some(error) => return (Err(error), history),
+                    return (Err(error), history);
                 }
             }
             current_function.push(token);
         } else {
             // check if this was a number before and it is not yet push to tokenized
             if !current_number.is_empty() && current_number != "-" {
-                match try_parse_f64(
+                if let Err(error) = try_parse_f64(
                     &mut current_number,
                     &mut instruction_stack,
                     &mut history,
                     &mut tokenized,
                 ) {
-                    None => {}
-                    Some(error) => return (Err(error), history),
+                    return (Err(error), history);
                 }
             }
             // check for variables
@@ -353,65 +342,65 @@ pub fn tokenization(expression: &str) -> (Result<Expression, CalcError>, Vec<Ins
                 match try_parse_variable(
                     &mut current_function,
                     &mut instruction_stack,
-                    &mut history,
+                    history,
                     tokenized,
                 ) {
-                    Ok(result) => {
-                        tokenized = result;
+                    (Ok(retured_tokenized), retured_history) => {
+                        tokenized = retured_tokenized;
+                        history = retured_history;
                     }
-                    Err(error) => return (Err(error), history),
+                    (Err(error), history) => return (Err(error), history),
                 }
             }
             match token {
                 '/' => {
                     while let Some(last_instruction) = instruction_stack.last() {
-                            if precedence(last_instruction) >= 3 {
-                                match instruction_to_expression(last_instruction, &mut tokenized) {
-                                    Ok(expr) => {
-                                        tokenized.push(expr);
-                                        instruction_stack.pop();
-                                    }
-                                    Err(error) => return (Err(error), history),
+                        if precedence(last_instruction) >= 3 {
+                            match instruction_to_expression(last_instruction, &mut tokenized) {
+                                Ok(expr) => {
+                                    tokenized.push(expr);
+                                    instruction_stack.pop();
                                 }
-                            } else {
-                                break;
+                                Err(error) => return (Err(error), history),
                             }
+                        } else {
+                            break;
                         }
-                    
+                    }
+
                     history.push(Instruction::Division);
                     instruction_stack.push(Instruction::Division);
                 }
                 '*' => {
                     while let Some(last_instruction) = instruction_stack.last() {
-                            if precedence(last_instruction) >= 3 {
-                                match instruction_to_expression(last_instruction, &mut tokenized) {
-                                    Ok(expr) => {
-                                        tokenized.push(expr);
-                                        instruction_stack.pop();
-                                    }
-                                    Err(error) => return (Err(error), history),
+                        if precedence(last_instruction) >= 3 {
+                            match instruction_to_expression(last_instruction, &mut tokenized) {
+                                Ok(expr) => {
+                                    tokenized.push(expr);
+                                    instruction_stack.pop();
                                 }
-                            } else {
-                                break;
+                                Err(error) => return (Err(error), history),
                             }
-                        
+                        } else {
+                            break;
+                        }
                     }
                     history.push(Instruction::Multiplication);
                     instruction_stack.push(Instruction::Multiplication);
                 }
                 '+' => {
                     while let Some(last_instruction) = instruction_stack.last() {
-                            if precedence(last_instruction) >= 2 {
-                                match instruction_to_expression(last_instruction, &mut tokenized) {
-                                    Ok(expr) => {
-                                        tokenized.push(expr);
-                                        instruction_stack.pop();
-                                    }
-                                    Err(error) => return (Err(error), history),
+                        if precedence(last_instruction) >= 2 {
+                            match instruction_to_expression(last_instruction, &mut tokenized) {
+                                Ok(expr) => {
+                                    tokenized.push(expr);
+                                    instruction_stack.pop();
                                 }
-                            } else {
-                                break;
+                                Err(error) => return (Err(error), history),
                             }
+                        } else {
+                            break;
+                        }
                     }
                     history.push(Instruction::Addition);
                     instruction_stack.push(Instruction::Addition);
@@ -425,23 +414,22 @@ pub fn tokenization(expression: &str) -> (Result<Expression, CalcError>, Vec<Ins
                         (Some(Instruction::Number(_)), _)
                         | (Some(Instruction::RightParenthesis), _)
                         | (Some(Instruction::Variable(_)), _) => {
-                            while let
-                                Some(last_instruction) = instruction_stack.last() {
-                                    if precedence(last_instruction) >= 2 {
-                                        match instruction_to_expression(
-                                            last_instruction,
-                                            &mut tokenized,
-                                        ) {
-                                            Ok(expr) => {
-                                                tokenized.push(expr);
-                                                instruction_stack.pop();
-                                            }
-                                            Err(error) => return (Err(error), history),
+                            while let Some(last_instruction) = instruction_stack.last() {
+                                if precedence(last_instruction) >= 2 {
+                                    match instruction_to_expression(
+                                        last_instruction,
+                                        &mut tokenized,
+                                    ) {
+                                        Ok(expr) => {
+                                            tokenized.push(expr);
+                                            instruction_stack.pop();
                                         }
-                                    } else {
-                                        break;
+                                        Err(error) => return (Err(error), history),
                                     }
+                                } else {
+                                    break;
                                 }
+                            }
                             instruction_stack.push(Instruction::Subtraction);
                         }
                         (Some(Instruction::Subtraction), Some(Instruction::Subtraction)) => {
@@ -503,43 +491,35 @@ pub fn tokenization(expression: &str) -> (Result<Expression, CalcError>, Vec<Ins
                         }
                         // check if function is supported else trow error
                         current_function.push('(');
+
                         match try_parse_variable(
                             &mut current_function,
                             &mut instruction_stack,
-                            &mut history,
+                            history,
                             tokenized,
                         ) {
-                            Ok(result) => {
-                                tokenized = result;
+                            (Ok(retured_tokenized), retured_history) => {
+                                tokenized = retured_tokenized;
+                                history = retured_history;
                             }
-                            Err(error) => return (Err(error), history),
+                            (Err(error), history) => return (Err(error), history),
                         }
 
                         current_function.clear();
                         continue;
                     }
                     // if ( is preceded by a number add implicit multiplication
-                    else if let Some(last_history) = history.last() {
-                        match last_history {
-                            Instruction::Number(_) | Instruction::RightParenthesis => {
-                                if let Some(last_instruction) = instruction_stack.last() {
-                                    if precedence(last_instruction) >= 3 {
-                                        match instruction_to_expression(
-                                            last_instruction,
-                                            &mut tokenized,
-                                        ) {
-                                            Ok(expr) => {
-                                                tokenized.push(expr);
-                                                instruction_stack.pop();
-                                            }
-                                            Err(error) => return (Err(error), history),
-                                        }
-                                    }
-                                }
-                                instruction_stack.push(Instruction::Multiplication);
-                                history.push(Instruction::ImplicitMultiplication);
+                    else {
+                        match handle_implicit_multiplication(
+                            &mut instruction_stack,
+                            tokenized,
+                            history,
+                        ) {
+                            (Ok(retured_tokenized), retured_history) => {
+                                tokenized = retured_tokenized;
+                                history = retured_history;
                             }
-                            _ => {}
+                            (Err(error), history) => return (Err(error), history),
                         }
                     }
                     instruction_stack.push(Instruction::LeftParenthesis);
@@ -562,6 +542,17 @@ pub fn tokenization(expression: &str) -> (Result<Expression, CalcError>, Vec<Ins
                             } else {
                                 // tokenized.push(Instruction::RightParenthesis);
                                 instruction_stack.pop();
+                                if let Some(function) = instruction_stack.last() {
+                                    if let &Instruction::Function(_) = function {
+                                        match instruction_to_expression(function, &mut tokenized) {
+                                            Ok(expr) => {
+                                                tokenized.push(expr);
+                                                instruction_stack.pop();
+                                            }
+                                            Err(error) => return (Err(error), history),
+                                        }
+                                    }
+                                }
                                 break;
                             }
                         } else {
@@ -571,18 +562,24 @@ pub fn tokenization(expression: &str) -> (Result<Expression, CalcError>, Vec<Ins
                 }
                 // for log(x, y)
                 ',' => {
-                    // parse the number before , or Error
-                    if !current_number.is_empty() && current_number != "-" {
-                        match try_parse_f64(
-                            &mut current_number,
-                            &mut instruction_stack,
-                            &mut history,
-                            &mut tokenized,
-                        ) {
-                            None => {}
-                            Some(error) => return (Err(error), history),
+                    loop {
+                        if let Some(last_instruction) = instruction_stack.last() {
+                            if last_instruction != &Instruction::LeftParenthesis{
+                                match instruction_to_expression(last_instruction, &mut tokenized) {
+                                    Ok(expr) => {
+                                        tokenized.push(expr);
+                                        instruction_stack.pop();
+                                    }
+                                    Err(error) => return (Err(error), history),
+                                }
+                            } else {
+                                break;
+                            }
+                        } else {
+                            return (Err(CalcError::MissingParenthesis), history);
                         }
                     }
+                    history.push(Instruction::Comma);
                 }
                 // when app run in cmdline '\r' '\n' appear at the end
                 '\r' | '\n' => break,
@@ -615,26 +612,26 @@ pub fn tokenization(expression: &str) -> (Result<Expression, CalcError>, Vec<Ins
         match try_parse_variable(
             &mut current_function,
             &mut instruction_stack,
-            &mut history,
+            history,
             tokenized,
         ) {
-            Ok(result) => {
-                tokenized = result;
+            (Ok(retured_tokenized), retured_history) => {
+                tokenized = retured_tokenized;
+                history = retured_history;
             }
-            Err(error) => return (Err(error), history),
+            (Err(error), history) => return (Err(error), history),
         }
     }
 
     // if the last token is a number parse it or Error
     if !current_number.is_empty() {
-        match try_parse_f64(
+        if let Err(error) = try_parse_f64(
             &mut current_number,
             &mut instruction_stack,
             &mut history,
             &mut tokenized,
         ) {
-            None => {}
-            Some(error) => return (Err(error), history),
+            return (Err(error), history);
         }
     }
     // check if there was a pair number of parenthesis or Error
@@ -1679,6 +1676,108 @@ mod tests_tokenization {
             )),
             result.0,
             "operation_priority 5 \n history = {:?}",
+            result.1
+        );
+    }
+
+    #[test]
+    fn constant() {
+        let mut result = tokenization("api");
+        assert_eq!(
+            Ok(Expression::multiplication(
+                Expression::variable('a'),
+                Expression::pi()
+            )),
+            result.0,
+            "constant 1\nhistory : {:?}",
+            result.1
+        );
+
+        result = tokenization("a*pi");
+        assert_eq!(
+            Ok(Expression::multiplication(
+                Expression::variable('a'),
+                Expression::pi()
+            )),
+            result.0,
+            "constant 2\nhistory : {:?}",
+            result.1
+        );
+
+        result = tokenization("a*phi");
+        assert_eq!(
+            Ok(Expression::multiplication(
+                Expression::variable('a'),
+                Expression::phi()
+            )),
+            result.0,
+            "constant 3\nhistory : {:?}",
+            result.1
+        );
+
+        result = tokenization("a*e");
+        assert_eq!(
+            Ok(Expression::multiplication(
+                Expression::variable('a'),
+                Expression::e()
+            )),
+            result.0,
+            "constant 4\nhistory : {:?}",
+            result.1
+        );
+
+        result = tokenization("aln(e)");
+        assert_eq!(
+            Ok(Expression::multiplication(
+                Expression::variable('a'),
+                Expression::ln(Expression::e())
+            )),
+            result.0,
+            "constant 5\nhistory : {:?}",
+            result.1
+        );
+
+        result = tokenization("eln(e)");
+        assert_eq!(
+            Ok(Expression::multiplication(
+                Expression::variable('e'),
+                Expression::ln(Expression::e())
+            )),
+            result.0,
+            "constant 6\nhistory : {:?}",
+            result.1
+        );
+
+        result = tokenization("piln(e)");
+        assert_eq!(
+            Ok(Expression::multiplication(
+                Expression::multiplication(Expression::variable('p'), Expression::variable('i'),),
+                Expression::ln(Expression::e())
+            )),
+            result.0,
+            "constant 7\nhistory : {:?}",
+            result.1
+        );
+
+        result = tokenization("ln(e)e");
+        assert_eq!(
+            Ok(Expression::multiplication(
+                Expression::ln(Expression::e()),
+                Expression::e()
+            )),
+            result.0,
+            "constant 6\nhistory : {:?}",
+            result.1
+        );
+
+        result = tokenization("ln(e)pi");
+        assert_eq!(
+            Ok(Expression::multiplication(
+                Expression::ln(Expression::e()),
+                Expression::pi()
+            )),
+            result.0,
+            "constant 7\nhistory : {:?}",
             result.1
         );
     }

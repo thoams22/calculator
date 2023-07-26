@@ -1,21 +1,30 @@
 use crate::tokenizer::CalcError;
 
-use super::Expression;
+use super::{
+    function::{Function, Functions},
+    Expression,
+};
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Addition {
     sub_expr: Vec<Expression>,
-    simplified : bool,
+    simplified: bool,
 }
 
 impl Addition {
     pub fn new(first: Expression, second: Expression) -> Self {
         let sub_expr: Vec<Expression> = vec![first, second];
-        Self { sub_expr ,simplified : false}
+        Self {
+            sub_expr,
+            simplified: false,
+        }
     }
 
     pub fn from_vec(sub_expr: Vec<Expression>) -> Self {
-        Self { sub_expr ,simplified : false}
+        Self {
+            sub_expr,
+            simplified: false,
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -48,18 +57,21 @@ impl Addition {
 
     pub fn equal(&self, other: &Expression) -> bool {
         if let Expression::Addition(_) = other {
-            let mut count = 0;
-            'i: for i in 0..self.len() {
-                for j in 0..other.len() {
-                    if self.sub_expr[i].equal(&other.get(j).unwrap()) {
-                        count += 1;
-                        continue 'i;
+            if self.len() == other.len() {
+                let len = self.len();
+                let mut index: Vec<bool> = vec![false; len*2];
+                'i: for i in 0..len {
+                    for j in 0..len {
+                        if self.sub_expr[i].equal(&other.get(j).unwrap()) && !(index[i] || index[j+len]) {
+                                index[i] = true;
+                                index[j+len] = true;
+                                continue 'i;
+                            }
                     }
+                    return false;
                 }
-                return false;
+                return index.iter().all(|&x| x);
             }
-
-            return count == self.len();
         }
         false
     }
@@ -71,14 +83,14 @@ impl Addition {
         }
     }
 
-    pub fn simplify(mut self) -> Expression {
+    pub fn simplify(self) -> Expression {
         if self.simplified {
             return Expression::Addition(Box::new(self));
         }
         self.simplify_nested_expression() // simplify sub expression
             .simplify_nested_addition() // Add(Add(4, 2), Add(8, 3)) -> Add(4, 2, 8, 3)
             .addition_variable() // Add(a, a, b) -> Add(Mult(2, a), b)
-            .addition_number() // Add(4, 2, 8, 3) -> 17, Add(5, 0) -> 5, Add(a, 0) -> a 
+            .addition_number() // Add(4, 2, 8, 3) -> 17, Add(5, 0) -> 5, Add(a, 0) -> a
     }
 
     fn simplify_nested_expression(mut self) -> Addition {
@@ -104,7 +116,8 @@ impl Addition {
     fn addition_variable(mut self) -> Addition {
         let mut i = 0;
         while i < self.sub_expr.len() {
-            let (mut coefficient, expr) = Self::extract_coefficient_and_expr(self.sub_expr[i].clone());
+            let (mut coefficient, mut expr) =
+                Self::extract_coefficient_and_expr(self.sub_expr[i].clone());
 
             let mut simplify: bool = false;
             let mut j = i + 1;
@@ -116,6 +129,16 @@ impl Addition {
                     coefficient += second_coefficient;
                     self.sub_expr.swap_remove(j);
                     simplify = true;
+                } else if let (Expression::Function(f_expr), Expression::Function(f_sec_expr)) =
+                    (expr.clone(), second_expr.clone())
+                {
+                    if let Some(result) = Self::simplify_function(*f_expr, *f_sec_expr) {
+                        expr = result;
+                        self.sub_expr.swap_remove(j);
+                        simplify = true;
+                    } else {
+                        j += 1;
+                    }
                 } else {
                     j += 1;
                 }
@@ -138,11 +161,8 @@ impl Addition {
                     self.sub_expr.push(Expression::Number(num * coefficient));
                 } else {
                     self.sub_expr.push(
-                        Expression::multiplication(
-                            Expression::Number(coefficient),
-                            expr,
-                        )
-                        .simplify(),
+                        Expression::multiplication(Expression::Number(coefficient), expr)
+                            .simplify(),
                     );
                 }
                 self.sub_expr.swap_remove(i);
@@ -151,6 +171,52 @@ impl Addition {
             }
         }
         self
+    }
+
+    fn simplify_function(expr_1: Function, expr_2: Function) -> Option<Expression> {
+        match (expr_1.get_function(), expr_2.get_function()) {
+            (Functions::Ln, Functions::Ln) => Some(
+                Expression::ln(Expression::multiplication(
+                    expr_1.get(0).unwrap().clone(),
+                    expr_2.get(0).unwrap().clone(),
+                ))
+                .simplify(),
+            ),
+
+            (Functions::Log2, Functions::Log2) => Some(Expression::log2(
+                Expression::multiplication(
+                    expr_1.get(0).unwrap().clone(),
+                    expr_2.get(0).unwrap().clone(),
+                )
+                .simplify(),
+            )),
+
+            (Functions::Log10, Functions::Log10) => Some(Expression::log10(
+                Expression::multiplication(
+                    expr_1.get(0).unwrap().clone(),
+                    expr_2.get(0).unwrap().clone(),
+                )
+                .simplify(),
+            )),
+
+            (Functions::Log, Functions::Log) => {
+                if expr_1.get(0).unwrap() == expr_2.get(0).unwrap() {
+                    Some(
+                        Expression::log(
+                            expr_1.get(0).unwrap().clone(),
+                            Expression::multiplication(
+                                expr_1.get(1).unwrap().clone(),
+                                expr_2.get(1).unwrap().clone(),
+                            ),
+                        )
+                        .simplify(),
+                    )
+                } else {
+                    None
+                }
+            }
+            (_, _) => None,
+        }
     }
 
     fn extract_coefficient_and_expr(expr: Expression) -> (f64, Expression) {
@@ -174,7 +240,7 @@ impl Addition {
                         }
                     } else {
                         Expression::Multiplication(mult)
-                    }
+                    },
                 )
             }
             _ => (1.0, expr),

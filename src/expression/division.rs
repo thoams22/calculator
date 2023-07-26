@@ -5,6 +5,7 @@ use super::Expression;
 #[derive(PartialEq, Debug, Clone)]
 pub struct Division {
     sub_expr: [Expression; 2],
+    simplified: bool,
 }
 
 impl Division {
@@ -16,11 +17,12 @@ impl Division {
         }
         Self {
             sub_expr: [numerator, denominator],
+            simplified: false,
         }
     }
 
     pub fn from_vec(sub_expr: [Expression; 2]) -> Self {
-        Self { sub_expr }
+        Self { sub_expr , simplified: false}
     }
 
     pub fn len(&self) -> usize {
@@ -39,25 +41,29 @@ impl Division {
 
     pub fn equal(&self, other: &Expression) -> bool {
         if let Expression::Division(_) = other {
-            let mut count = 0;
-            'i: for i in 0..2 {
-                for j in 0..2 {
-                    if self.sub_expr[i].equal(&other.get(j).unwrap()) {
-                        count += 1;
-                        continue 'i;
+            if self.len() == other.len() {
+                let len = self.len();
+                let mut index: Vec<bool> = vec![false; len*2];
+                'i: for i in 0..len {
+                    for j in 0..len {
+                        if self.sub_expr[i].equal(&other.get(j).unwrap()) && !(index[i] || index[j+len]) {
+                                index[i] = true;
+                                index[j+len] = true;
+                                continue 'i;
+                            }
                     }
+                    return false;
                 }
-                return false;
+                return index.iter().all(|&x| x);
             }
-
-            return count == 2;
         }
         false
     }
 
-    pub fn simplify(self) -> Expression {
+    pub fn simplify(mut self) -> Expression {
         let simplified_numerator = self.sub_expr[0].clone().simplify();
         let simplified_denominator = self.sub_expr[1].clone().simplify();
+        self.simplified = true;
         match (&simplified_numerator, &simplified_denominator) {
             (Expression::Number(numerator), Expression::Number(denominator)) => {
                 Expression::Number(numerator / denominator)

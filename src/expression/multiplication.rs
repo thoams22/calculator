@@ -47,18 +47,21 @@ impl Multiplication {
 
     pub fn equal(&self, other: &Expression) -> bool {
         if let Expression::Multiplication(_) = other {
-            let mut count = 0;
-            'i: for i in 0..self.len() {
-                for j in 0..other.len() {
-                    if self.sub_expr[i].equal(&other.get(j).unwrap()) {
-                        count += 1;
-                        continue 'i;
+            if self.len() == other.len() {
+                let len = self.len();
+                let mut index: Vec<bool> = vec![false; len*2];
+                'i: for i in 0..len {
+                    for j in 0..len {
+                        if self.sub_expr[i].equal(&other.get(j).unwrap()) && !(index[i] || index[j+len]) {
+                                index[i] = true;
+                                index[j+len] = true;
+                                continue 'i;
+                            }
                     }
+                    return false;
                 }
-                return false;
+                return index.iter().all(|&x| x);
             }
-
-            return count == self.len();
         }
         false
     }
@@ -166,7 +169,7 @@ impl Multiplication {
             while j < self.sub_expr.len() {
                 let second_expr = self.sub_expr[j].clone();
 
-                let (base_2, mut exponent_2) = match &second_expr {
+                let (base_2, _exponent_2) = match &second_expr {
                     Expression::Exponentiation(expo) => (
                         expo.get(0).cloned().unwrap(),
                         Addition::from_vec(vec![expo.get(1).cloned().unwrap()]),

@@ -1,6 +1,6 @@
-use crate::{tokenizer::CalcError};
+use crate::tokenizer::CalcError;
 
-use super::{Expression, math::{pascal_triangle, multinomial_expansion}};
+use super::{Expression, math::multinomial_expansion};
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Exponentiation {
@@ -30,6 +30,14 @@ impl Exponentiation {
         self.sub_expr[1] = other;
     }
 
+    pub fn get_base(&self) -> Expression{
+        self.sub_expr[0].clone()
+    }
+
+    pub fn get_exponent(&self) -> Expression{
+        self.sub_expr[1].clone()
+    }
+
     pub fn len(&self) -> usize {
         self.sub_expr.len()
     }
@@ -39,18 +47,21 @@ impl Exponentiation {
 
     pub fn equal(&self, other: &Expression) -> bool {
         if let Expression::Exponentiation(_) = other {
-            let mut count = 0;
-            'i: for i in 0..2 {
-                for j in 0..2 {
-                    if self.sub_expr[i].equal(&other.get(j).unwrap()) {
-                        count += 1;
-                        continue 'i;
+            if self.len() == other.len() {
+                let len = self.len();
+                let mut index: Vec<bool> = vec![false; len*2];
+                'i: for i in 0..len {
+                    for j in 0..len {
+                        if self.sub_expr[i].equal(&other.get(j).unwrap()) && !(index[i] || index[j+len]) {
+                                index[i] = true;
+                                index[j+len] = true;
+                                continue 'i;
+                            }
                     }
+                    return false;
                 }
-                return false;
+                return index.iter().all(|&x| x);
             }
-
-            return count == 2;
         }
         false
     }
