@@ -18,6 +18,10 @@ impl Multiplication {
         Self { sub_expr , simplified : false}
     }
 
+    pub fn set_simplified(&mut self, state: bool) {
+        self.simplified = state;
+    }
+
     pub fn len(&self) -> usize {
         self.sub_expr.len()
     }
@@ -79,8 +83,8 @@ impl Multiplication {
         }
         self.simplify_nested_expression() // simplify sub expression
             .simplify_nested_multiplication() // Mult(Mult(4, 2), Mult(8, 3)) -> Mult(4, 2, 8, 3)
-            .multiplication_on_sum() // Mult(Add(4, 2), Add(8, 3)) -> 66
             .multiplication() // Mult(a, a) -> Exp(a, 2)
+            .multiplication_on_sum() // Mult(Add(4, 2), Add(8, 3)) -> 66
             .multiplication_number() // Mult(8, 3, 2, 4) -> 192, Mult(a, 1) -> a , Mult(a, 0) -> 0
     }
 
@@ -196,30 +200,29 @@ impl Multiplication {
                     j += 1;
                 }
             }
-
+            
             if simplify {
                 let simplified_exponent = Expression::Addition(Box::new(exponent)).simplify();
                 if let Expression::Exponentiation(mut expo) = expr {
+                    expo.simplified(false);
                     expo.replace_exponent(simplified_exponent);
-                    self.sub_expr.push(Expression::Exponentiation(expo));
+                    self.sub_expr.push(Expression::Exponentiation(expo).simplify());
                 } else {
-                    let new_exponentiation = Exponentiation::new(base, simplified_exponent);
                     self.sub_expr
-                        .push(Expression::Exponentiation(Box::new(new_exponentiation)));
+                        .push(Expression::exponentiation(base, simplified_exponent).simplify());
                 }
                 self.sub_expr.swap_remove(i);
             } else {
                 i += 1;
             }
         }
-
         self
     }
 
     fn multiplication_number(mut self) -> Expression {
         let mut sum = 1.0;
         let mut non_numbers: Vec<Expression> = Vec::new();
-
+        
         for expr in self.sub_expr.drain(..) {
             match expr {
                 Expression::Number(num) => {
@@ -235,11 +238,15 @@ impl Multiplication {
         if sum != 1.0 {
             non_numbers.push(Expression::Number(sum));
         }
-
+        
         self.simplified = true;
-
+        
         match non_numbers.len() {
-            0 => Expression::Number(0.0),
+            0 => {
+                if sum == 1.0 {
+                    return Expression::Number(1.0);
+                }
+                Expression::Number(0.0)},
             1 => non_numbers.pop().unwrap(),
             _ => Expression::Multiplication(Box::new(Self::from_vec(non_numbers))),
         }

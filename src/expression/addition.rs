@@ -27,6 +27,10 @@ impl Addition {
         }
     }
 
+    pub fn set_simplified(&mut self, state: bool) {
+        self.simplified = state;
+    }
+
     pub fn len(&self) -> usize {
         self.sub_expr.len()
     }
@@ -59,14 +63,16 @@ impl Addition {
         if let Expression::Addition(_) = other {
             if self.len() == other.len() {
                 let len = self.len();
-                let mut index: Vec<bool> = vec![false; len*2];
+                let mut index: Vec<bool> = vec![false; len * 2];
                 'i: for i in 0..len {
                     for j in 0..len {
-                        if self.sub_expr[i].equal(&other.get(j).unwrap()) && !(index[i] || index[j+len]) {
-                                index[i] = true;
-                                index[j+len] = true;
-                                continue 'i;
-                            }
+                        if self.sub_expr[i].equal(&other.get(j).unwrap())
+                            && !(index[i] || index[j + len])
+                        {
+                            index[i] = true;
+                            index[j + len] = true;
+                            continue 'i;
+                        }
                     }
                     return false;
                 }

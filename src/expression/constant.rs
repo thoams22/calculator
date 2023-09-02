@@ -9,7 +9,7 @@ pub enum Constants {
     Phi,
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub struct Constant {
     constant: Constants,
 }

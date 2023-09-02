@@ -24,11 +24,13 @@ use std::io;
 
 use crate::tokenizer::tokenization;
 
+
 mod expression;
 mod tokenizer;
+mod lexer;
+mod parser;
 
 fn main() {
-
     println!("Please input the expression to evaluate");
 
     let mut expression = String::new();
@@ -48,14 +50,14 @@ fn main() {
             println!("Expression evaluated : {:?}", tokens.to_string());
             // println!("history of tokenization {:?}", history);
             // println!("Evaluated form {:?}", tokens);
-            let evaluated = tokens.evaluate();
+            let simplified = tokens.simplify();
+            println!("Simplified version is : {:?}", simplified.to_string());
+
+            let evaluated = simplified.evaluate();
             match evaluated {
                 Ok(result) => println!("Result is : {}", result),
                 Err(error) => println!("Error in Evaluation : {:?},\nHistory {:?}", error, history),
             }
-
-            let simplified = tokens.simplify().to_string();
-            println!("Simplified version is : {:?}", simplified);
         }
         (Err(error), history) => println!(
             "Error in tokenization : {:?},\n history {:?}",

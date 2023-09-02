@@ -1,0 +1,37 @@
+{
+	"nodes":[
+		{"id":"ec436d88a566823d","type":"group","x":-440,"y":1340,"width":665,"height":100,"label":"Return of Program"},
+		{"type":"text","text":"Return the simplified version","id":"c5e273383725d0a3","x":-640,"y":280,"width":250,"height":60},
+		{"type":"text","text":"Try to solve it","id":"5c2ce59b97b11b38","x":-240,"y":280,"width":250,"height":50},
+		{"type":"text","text":"Return the solution","id":"6dd7af7db46bab18","x":-420,"y":1360,"width":250,"height":60},
+		{"type":"text","text":"Return that we do not support the problem yet","id":"91b53907dbfa85d5","x":-45,"y":1360,"width":250,"height":60},
+		{"id":"e070b88611a382a9","type":"text","text":"Systeme of equation","x":500,"y":560,"width":250,"height":60},
+		{"type":"text","text":"Isolate the variable","id":"a219a281a26d9964","x":-960,"y":620,"width":250,"height":50},
+		{"type":"text","text":"Varibles aliassing\nex : replace $e^x$ by $y$ \nto reduce compelxity of equations.","id":"720b5e5f27b862c8","x":-240,"y":586,"width":250,"height":118},
+		{"id":"b5bd1fd4eeed7772","type":"text","text":"Discriminant","x":-115,"y":920,"width":250,"height":50},
+		{"type":"text","text":"Try to reduce the number of occurence of the variable","id":"4bec04702480f733","x":-600,"y":800,"width":250,"height":60},
+		{"type":"text","text":"Simplify the RPN using basic operator propreties and rewrite for lisiblity.","id":"4a68eefb70ee706e","x":-440,"y":40,"width":250,"height":100},
+		{"type":"text","text":"Parse the text and put it in an RPN form with a shunting yard algorithm","id":"1f649fba25631d67","x":-440,"y":-120,"width":250,"height":100},
+		{"type":"text","text":"Take text as input","id":"6b940a49c5f5affe","x":-440,"y":-220,"width":250,"height":50},
+		{"type":"link","url":"https://en.wikipedia.org/wiki/Shunting_yard_algorithm","id":"1f7e70a9b0232e01","x":-1500,"y":-310,"width":580,"height":580}
+	],
+	"edges":[
+		{"id":"2ad3213f47511d41","fromNode":"6b940a49c5f5affe","fromSide":"bottom","toNode":"1f649fba25631d67","toSide":"top"},
+		{"id":"7a8d5027a9664016","fromNode":"1f7e70a9b0232e01","fromSide":"right","toNode":"1f649fba25631d67","toSide":"left","fromEnd":"arrow","color":"6"},
+		{"id":"d8b9a74548f56747","fromNode":"1f649fba25631d67","fromSide":"bottom","toNode":"4a68eefb70ee706e","toSide":"top"},
+		{"id":"7567e49b0471cd62","fromNode":"4a68eefb70ee706e","fromSide":"bottom","toNode":"c5e273383725d0a3","toSide":"top","color":"4","label":"if no variables"},
+		{"id":"94d8ef96905a2540","fromNode":"4a68eefb70ee706e","fromSide":"bottom","toNode":"5c2ce59b97b11b38","toSide":"top","label":"else"},
+		{"id":"cf1ef207c0b5b253","fromNode":"5c2ce59b97b11b38","fromSide":"bottom","toNode":"a219a281a26d9964","toSide":"top","label":"If one variable AND one occurrence"},
+		{"id":"5e2e44ee735845de","fromNode":"4bec04702480f733","fromSide":"bottom","toNode":"a219a281a26d9964","toSide":"bottom","label":"If one occurrence"},
+		{"id":"0d1fb358d5031447","fromNode":"a219a281a26d9964","fromSide":"bottom","toNode":"6dd7af7db46bab18","toSide":"top","color":"4"},
+		{"id":"c08af2060c8be369","fromNode":"4bec04702480f733","fromSide":"bottom","toNode":"91b53907dbfa85d5","toSide":"top","color":"1","label":"If still multiple occurrence"},
+		{"id":"c72eab116d085277","fromNode":"5c2ce59b97b11b38","fromSide":"bottom","toNode":"720b5e5f27b862c8","toSide":"top","label":"Polynomiales"},
+		{"id":"b489f9b1c68eb47f","fromNode":"720b5e5f27b862c8","fromSide":"bottom","toNode":"b5bd1fd4eeed7772","toSide":"top","label":"second degrée equation"},
+		{"id":"e2ea8bd3f082e995","fromNode":"b5bd1fd4eeed7772","fromSide":"bottom","toNode":"6dd7af7db46bab18","toSide":"right","color":"4"},
+		{"id":"478c014169e36f01","fromNode":"720b5e5f27b862c8","fromSide":"left","toNode":"4bec04702480f733","toSide":"right"},
+		{"id":"2601543f7b425a0e","fromNode":"4bec04702480f733","fromSide":"top","toNode":"720b5e5f27b862c8","toSide":"top"},
+		{"id":"73117432d9bd4315","fromNode":"5c2ce59b97b11b38","fromSide":"bottom","toNode":"e070b88611a382a9","toSide":"top","label":"Multiple variables"},
+		{"id":"e0d4026d9b5f856a","fromNode":"e070b88611a382a9","fromSide":"bottom","toNode":"91b53907dbfa85d5","toSide":"right","color":"1"},
+		{"id":"97755f2eb8017e03","fromNode":"e070b88611a382a9","fromSide":"bottom","toNode":"6dd7af7db46bab18","toSide":"right","color":"4"}
+	]
+}

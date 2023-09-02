@@ -19,9 +19,9 @@ pub enum Functions {
 
 #[derive(PartialEq, PartialOrd, Debug, Clone, Copy)]
 pub enum FunctionsType {
-    logarithm,
-    root,
-    trigonometric,
+    Logarithm,
+    Root,
+    Trigonometric,
 }
 
 impl Functions {
@@ -55,7 +55,7 @@ impl Function {
         Self {
             sub_expr: vec![expr],
             function: Functions::Sqrt,
-            function_type: FunctionsType::root,
+            function_type: FunctionsType::Root,
         }
     }
 
@@ -63,7 +63,7 @@ impl Function {
         Self {
             sub_expr: vec![expr],
             function: Functions::Ln,
-            function_type: FunctionsType::logarithm,
+            function_type: FunctionsType::Logarithm,
         }
     }
 
@@ -71,7 +71,7 @@ impl Function {
         Self {
             sub_expr: vec![expr],
             function: Functions::Log2,
-            function_type: FunctionsType::logarithm,
+            function_type: FunctionsType::Logarithm,
         }
     }
 
@@ -79,7 +79,7 @@ impl Function {
         Self {
             sub_expr: vec![expr],
             function: Functions::Log10,
-            function_type: FunctionsType::logarithm,
+            function_type: FunctionsType::Logarithm,
         }
     }
 
@@ -87,7 +87,7 @@ impl Function {
         Self {
             sub_expr: vec![expr],
             function: Functions::Sin,
-            function_type: FunctionsType::trigonometric,
+            function_type: FunctionsType::Trigonometric,
         }
     }
 
@@ -95,42 +95,42 @@ impl Function {
         Self {
             sub_expr: vec![expr],
             function: Functions::Cos,
-            function_type: FunctionsType::trigonometric,
+            function_type: FunctionsType::Trigonometric,
         }
     }
     pub fn tan(expr: Expression) -> Self {
         Self {
             sub_expr: vec![expr],
             function: Functions::Tan,
-            function_type: FunctionsType::trigonometric,
+            function_type: FunctionsType::Trigonometric,
         }
     }
     pub fn atan(expr: Expression) -> Self {
         Self {
             sub_expr: vec![expr],
             function: Functions::Atan,
-            function_type: FunctionsType::trigonometric,
+            function_type: FunctionsType::Trigonometric,
         }
     }
     pub fn acos(expr: Expression) -> Self {
         Self {
             sub_expr: vec![expr],
             function: Functions::Acos,
-            function_type: FunctionsType::trigonometric,
+            function_type: FunctionsType::Trigonometric,
         }
     }
     pub fn asin(expr: Expression) -> Self {
         Self {
             sub_expr: vec![expr],
             function: Functions::Asin,
-            function_type: FunctionsType::trigonometric,
+            function_type: FunctionsType::Trigonometric,
         }
     }
     pub fn log(base: Expression, expr: Expression) -> Self {
         Self {
             sub_expr: vec![base, expr],
             function: Functions::Log,
-            function_type: FunctionsType::logarithm,
+            function_type: FunctionsType::Logarithm,
         }
     }
 }
@@ -159,14 +159,14 @@ impl Function {
     /// other => None
     pub fn get_base(&self) -> Option<Expression> {
         match self.function_type {
-            FunctionsType::logarithm => match self.function {
+            FunctionsType::Logarithm => match self.function {
                 Functions::Ln => Some(Expression::e()),
                 Functions::Log10 => Some(Expression::Number(10.0)),
                 Functions::Log2 => Some(Expression::Number(2.0)),
                 Functions::Log => Some(self.sub_expr[0].clone()),
                 _ => None,
             },
-            FunctionsType::root => match self.function {
+            FunctionsType::Root => match self.function {
                 Functions::Sqrt => Some(Expression::Number(2.0)),
                 _ => None,
             },
@@ -233,7 +233,7 @@ impl Function {
             *expression = expression.clone().simplify();
         }
         match self.function_type {
-            FunctionsType::logarithm => self.simplify_logarithm(),
+            FunctionsType::Logarithm => self.simplify_logarithm(),
             _ => Expression::Function(Box::new(self)),
         }
     }
