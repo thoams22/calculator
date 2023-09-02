@@ -145,10 +145,11 @@ impl Parser {
         
         if self.current_token().kind == TokenKind::LeftParenthesis {
 
-            let _left = self.next_token();
+            self.next_token();
+            self.next_token();
             let expr = self.parse_additive();
-            let _right = self.equal_or_create(TokenKind::RightParenthesis);
-
+            self.equal_or_create(TokenKind::RightParenthesis);
+            
             return expr;
         } 
 
