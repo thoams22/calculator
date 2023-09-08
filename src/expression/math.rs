@@ -110,7 +110,7 @@ fn find_permutations_with_sum(m: usize, n: i64) -> Vec<Vec<i64>> {
     result
 }
 
-/// Return `Some((root, exponent))` if n is a perfect power, else `None`.
+/// Return `Some((root, exponent))` if n is a perfect power.
 /// 
 /// If `is_perfect_power(n)` `n <= 1.0` return None 
 /// 
@@ -138,6 +138,35 @@ pub fn is_perfect_power(n: &f64) -> Option<(f64, u32)> {
     min_root
 }
 
+/// Return `(numerator, denominator)` if the number is representable in a i64 fraction.
+/// 
+/// ### Exemple
+/// ```
+/// let fraction = f64_to_fraction(2.5f64);
+/// assert_eq!((5, 2), result);
+/// ```
+fn f64_to_fraction(number: f64) -> (i64 ,i64) {
+    let mut n: u32 = 0;
+    let mut numerator: f64 = number;
+    while numerator.fract() > 1e-10 {
+        numerator = 10.0 * numerator;
+        n += 1;
+    }
+    let gcd = gcd(numerator.trunc() as i64, 10_i64.pow(n));
+    ((numerator/gcd as f64) as i64, 10_i64.pow(n)/gcd as i64)
+}
+
+/// Return the greatest common divisor of first and second.
+fn gcd(mut first: i64, mut second: i64) -> i64 {
+    while second != 0 {
+        let r = first % second;
+        first = second;
+        second = r;
+    }
+    first
+}
+
+/// Return all divisor of n
 pub fn find_divisors(n: u64) -> Vec<u64> {
     let mut divisors = Vec::new();
     let mut last_divisor: u64 = u64::MAX;
