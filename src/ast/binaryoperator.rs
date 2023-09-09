@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 
-use crate::ast::Expression;
+use crate::ast::Node;
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum BinaryOperatorKind {
@@ -38,27 +38,12 @@ impl Display for BinaryOperatorKind {
 #[derive(PartialEq, Debug, Clone)]
 pub struct BinaryOperator {
     pub kind: BinaryOperatorKind,
-    pub left: Expression,
-    pub right: Expression,
+    pub left: Node,
+    pub right: Node,
 }
 
 impl BinaryOperator {
-    pub fn new(kind: BinaryOperatorKind, left: Expression, right: Expression) -> Self {
-        Self { kind, left, right }
+    pub fn new(kind: BinaryOperatorKind, left: Node, right: Node) -> Self {
+        Self { kind,left, right }
     }
-
-    pub fn simplify(mut self) -> Expression {
-        match self.kind {
-            BinaryOperatorKind::Addition => todo!(),//self.simplify_addition(),
-            BinaryOperatorKind::Subtraction => todo!(),
-            BinaryOperatorKind::Multiplication => todo!(),
-            BinaryOperatorKind::Division => todo!(),
-            BinaryOperatorKind::Exponentiation => todo!(),
-            BinaryOperatorKind::Equality => todo!(),
-        }
-    }
-
-    // fn simplify_addition(&mut self) -> Expression {
-        
-    // }
 }

@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 
-use super::Expression;
+use super::Node;
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum UnaryOperatorKind {
@@ -26,15 +26,11 @@ impl Display for UnaryOperatorKind {
 #[derive(PartialEq, Debug, Clone)]
 pub struct UnaryOperator {
     pub kind: UnaryOperatorKind,
-    pub operand: Expression,
+    pub operand: Node,
 }
 
 impl UnaryOperator {
-    pub fn new(kind: UnaryOperatorKind, operand: Expression) -> Self {
+    pub fn new(kind: UnaryOperatorKind, operand: Node) -> Self {
         Self { kind, operand }
-    }
-
-    pub fn simplify(self) -> Expression {
-        todo!()
     }
 }

@@ -122,16 +122,6 @@ impl Lexer {
         self.diagnostics.clone()
     }
 
-    pub fn get_diagnostic_message(&mut self) -> Vec<String> {
-        self.diagnostics.get_messages()
-    }
-
-    /// Return the current Token
-    pub fn current_token(&mut self) -> &Token {
-        let token = self.next_token();
-        self.peeked.insert(token)
-    }
-
     /// Return the current Token if it exist OR Lex it
     pub fn next_token(&mut self) -> Token {
         self.peeked.take().unwrap_or_else(|| self.convert())
@@ -182,7 +172,7 @@ impl Lexer {
                     }
                     '(' => Token {
                         kind: TokenKind::LeftParenthesis,
-                        text: text,
+                        text,
                         span: Span {
                             start,
                             end: self.position,
@@ -190,91 +180,91 @@ impl Lexer {
                     },
                     ')' => Token {
                         kind: TokenKind::RightParenthesis,
-                        text: text,
+                        text,
                         span: Span {
                             start,
                             end: self.position,
                         },
                     },
 
-                    '{' => Token {
-                        kind: TokenKind::LeftCurly,
-                        text: text,
-                        span: Span {
-                            start,
-                            end: self.position,
-                        },
-                    },
-                    '}' => Token {
-                        kind: TokenKind::RightCurly,
-                        text: text,
-                        span: Span {
-                            start,
-                            end: self.position,
-                        },
-                    },
+                    // '{' => Token {
+                    //     kind: TokenKind::LeftCurly,
+                    //     text,
+                    //     span: Span {
+                    //         start,
+                    //         end: self.position,
+                    //     },
+                    // },
+                    // '}' => Token {
+                    //     kind: TokenKind::RightCurly,
+                    //     text,
+                    //     span: Span {
+                    //         start,
+                    //         end: self.position,
+                    //     },
+                    // },
 
-                    '[' => Token {
-                        kind: TokenKind::LeftBracket,
-                        text: text,
-                        span: Span {
-                            start,
-                            end: self.position,
-                        },
-                    },
-                    ']' => Token {
-                        kind: TokenKind::RightBracket,
-                        text: text,
-                        span: Span {
-                            start,
-                            end: self.position,
-                        },
-                    },
+                    // '[' => Token {
+                    //     kind: TokenKind::LeftBracket,
+                    //     text,
+                    //     span: Span {
+                    //         start,
+                    //         end: self.position,
+                    //     },
+                    // },
+                    // ']' => Token {
+                    //     kind: TokenKind::RightBracket,
+                    //     text,
+                    //     span: Span {
+                    //         start,
+                    //         end: self.position,
+                    //     },
+                    // },
 
                     ',' => Token {
                         kind: TokenKind::Comma,
-                        text: text,
+                        text,
                         span: Span {
                             start,
                             end: self.position,
                         },
                     },
-                    ';' => Token {
-                        kind: TokenKind::Semicolon,
-                        text: text,
-                        span: Span {
-                            start,
-                            end: self.position,
-                        },
-                    },
-                    ':' => Token {
-                        kind: TokenKind::Colon,
-                        text: text,
-                        span: Span {
-                            start,
-                            end: self.position,
-                        },
-                    },
+                    // ';' => Token {
+                    //     kind: TokenKind::Semicolon,
+                    //     text,
+                    //     span: Span {
+                    //         start,
+                    //         end: self.position,
+                    //     },
+                    // },
+                    // ':' => Token {
+                    //     kind: TokenKind::Colon,
+                    //     text,
+                    //     span: Span {
+                    //         start,
+                    //         end: self.position,
+                    //     },
+                    // },
                     '=' => Token {
                         kind: TokenKind::Equal,
-                        text: text,
+                        text,
                         span: Span {
                             start,
                             end: self.position,
                         },
                     },
-                    '_' => Token {
-                        kind: TokenKind::Underscore,
-                        text: text,
-                        span: Span {
-                            start,
-                            end: self.position,
-                        },
-                    },
+                    // '_' => Token {
+                    //     kind: TokenKind::Underscore,
+                    //     text,
+                    //     span: Span {
+                    //         start,
+                    //         end: self.position,
+                    //     },
+                    // },
 
                     '+' => Token {
                         kind: TokenKind::Plus,
-                        text: text,
+                        text,
                         span: Span {
                             start,
                             end: self.position,
@@ -282,7 +272,7 @@ impl Lexer {
                     },
                     '-' => Token {
                         kind: TokenKind::Minus,
-                        text: text,
+                        text,
                         span: Span {
                             start,
                             end: self.position,
@@ -290,7 +280,7 @@ impl Lexer {
                     },
                     '*' => Token {
                         kind: TokenKind::Star,
-                        text: text,
+                        text,
                         span: Span {
                             start,
                             end: self.position,
@@ -298,57 +288,57 @@ impl Lexer {
                     },
                     '/' => Token {
                         kind: TokenKind::Slash,
-                        text: text,
+                        text,
                         span: Span {
                             start,
                             end: self.position,
                         },
                     },
-                    '%' => Token {
-                        kind: TokenKind::Percent,
-                        text: text,
-                        span: Span {
-                            start,
-                            end: self.position,
-                        },
-                    },
+                    // '%' => Token {
+                    //     kind: TokenKind::Percent,
+                    //     text,
+                    //     span: Span {
+                    //         start,
+                    //         end: self.position,
+                    //     },
+                    // },
                     '^' => Token {
                         kind: TokenKind::Hat,
-                        text: text,
+                        text,
                         span: Span {
                             start,
                             end: self.position,
                         },
                     },
-                    '\'' => Token {
-                        kind: TokenKind::Prime,
-                        text: text,
-                        span: Span {
-                            start,
-                            end: self.position,
-                        },
-                    },
-                    '\n' => Token {
-                        kind: TokenKind::NewLine,
-                        text: text,
-                        span: Span {
-                            start,
-                            end: self.position,
-                        },
-                    },
-                    '\r' => {
-                        if let Some(x) = self.eat_if(|x| x == '\n') {
-                            text.push(x)
-                        }
-                        Token {
-                            kind: TokenKind::NewLine,
-                            text: text,
-                            span: Span {
-                                start,
-                                end: self.position,
-                            },
-                        }
-                    }
+                    // '\'' => Token {
+                    //     kind: TokenKind::Prime,
+                    //     text,
+                    //     span: Span {
+                    //         start,
+                    //         end: self.position,
+                    //     },
+                    // },
+                    // '\n' => Token {
+                    //     kind: TokenKind::NewLine,
+                    //     text,
+                    //     span: Span {
+                    //         start,
+                    //         end: self.position,
+                    //     },
+                    // },
+                    // '\r' => {
+                    //     if let Some(x) = self.eat_if(|x| x == '\n') {
+                    //         text,.push(x)
+                    //     }
+                    //     Token {
+                    //         kind: TokenKind::NewLine,
+                    //         text,
+                    //         span: Span {
+                    //             start,
+                    //             end: self.position,
+                    //         },
+                    //     }
+                    // }
                     _ => {
                         if x.is_ascii_alphabetic() {
                             while let Some(x) = self.eat_if(|x| x.is_ascii_alphabetic()) {
@@ -357,7 +347,7 @@ impl Lexer {
 
                             Token {
                                 kind: TokenKind::Literal,
-                                text: text,
+                                text,
                                 span: Span {
                                     start,
                                     end: self.position,
@@ -370,7 +360,7 @@ impl Lexer {
 
                             Token {
                                 kind: TokenKind::Number,
-                                text: text,
+                                text,
                                 span: Span {
                                     start,
                                     end: self.position,
@@ -380,7 +370,7 @@ impl Lexer {
                             self.diagnostics.report_unknown_char(x);
                             Token {
                                 kind: TokenKind::Error,
-                                text: text,
+                                text,
                                 span: Span {
                                     start,
                                     end: self.position,
@@ -447,7 +437,7 @@ mod test_lexer {
         let mut lexer = Lexer::new("ae % vrr ^fs ".chars().collect());
         assert_eq!(lexer.next_token().kind, TokenKind::Literal);
         assert_eq!(lexer.next_token().kind, TokenKind::WhiteSpace);
-        assert_eq!(lexer.next_token().kind, TokenKind::Percent);
+        assert_eq!(lexer.next_token().kind, TokenKind::Error);
         assert_eq!(lexer.next_token().kind, TokenKind::WhiteSpace);
         assert_eq!(lexer.next_token().kind, TokenKind::Literal);
         assert_eq!(lexer.next_token().kind, TokenKind::WhiteSpace);
@@ -471,8 +461,8 @@ mod test_lexer {
     #[test]
     fn test_lexer_6() {
         let mut lexer = Lexer::new("''fç".chars().collect());
-        assert_eq!(lexer.next_token().kind, TokenKind::Prime);
-        assert_eq!(lexer.next_token().kind, TokenKind::Prime);
+        assert_eq!(lexer.next_token().kind, TokenKind::Error);
+        assert_eq!(lexer.next_token().kind, TokenKind::Error);
         assert_eq!(lexer.next_token().kind, TokenKind::Literal);
         assert_eq!(lexer.next_token().kind, TokenKind::Error);
         assert_eq!(lexer.next_token().kind, TokenKind::End);
@@ -482,7 +472,7 @@ mod test_lexer {
     fn test_lexer_7() {
         let mut lexer = Lexer::new("34.45;".chars().collect());
         assert_eq!(lexer.next_token().kind, TokenKind::Number);
-        assert_eq!(lexer.next_token().kind, TokenKind::Semicolon);
+        assert_eq!(lexer.next_token().kind, TokenKind::Error);
         assert_eq!(lexer.next_token().kind, TokenKind::End);
     }
 }

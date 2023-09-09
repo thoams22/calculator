@@ -1,6 +1,6 @@
 pub mod binaryoperator;
-pub mod unaryoperator;
-pub mod function;
+pub(crate) mod unaryoperator;
+pub(crate) mod function;
 
 use std::fmt::{Display, Formatter};
 
@@ -10,7 +10,7 @@ use self::function::Function;
 
 
 #[derive(PartialEq, Debug, Clone)]
-pub enum Expression {
+pub enum Node {
     Number(i64),
     Variable(char),
     Constant(ConstantKind),
@@ -22,58 +22,59 @@ pub enum Expression {
 }
 
 // Helper constructor
-impl Expression {
+impl Node {
     pub fn binary_operator(
         kind: BinaryOperatorKind,
-        left: Expression,
-        right: Expression,
-    ) -> Expression {
-        Expression::BinaryOperator(Box::new(BinaryOperator::new(kind, left, right)))
+        left: Node,
+        right: Node,
+    ) -> Node {
+        Node::BinaryOperator(Box::new(BinaryOperator::new(kind, left, right)))
     }
 
-    pub fn unary_operator(kind: UnaryOperatorKind, operand: Expression) -> Expression {
-        Expression::UnaryOperator(Box::new(UnaryOperator::new(kind, operand)))
+    pub fn unary_operator(kind: UnaryOperatorKind, operand: Node) -> Node {
+        Node::UnaryOperator(Box::new(UnaryOperator::new(kind, operand)))
     }
 
-    pub fn parenthesis(expr: Expression) -> Expression {
-        Expression::Parenthesis(Box::new(Parenthesis::new(expr)))
+    pub fn parenthesis(expr: Node) -> Node {
+        Node::Parenthesis(Box::new(Parenthesis::new(expr)))
     }
 
-    pub fn function(function: Function) -> Expression {
-        Expression::Function(Box::new(function))
+    pub fn function(function: Function) -> Node {
+        Node::Function(Box::new(function))
     }
 }
 
-impl Expression {
+impl Node {
     pub fn print(&self, span: Option<&str>) {
         let current_span = span.unwrap_or("");
         let new_span = current_span.to_string() + "   ";
         match self {
-            Expression::Number(_) => println!("{}{}", current_span, self),
-            Expression::BinaryOperator(bin) => {
+            Node::Number(_) => println!("{}{}", current_span, self),
+            Node::BinaryOperator(bin) => {
                 println!("{}BinaryOperator : {}", current_span, bin.kind);
 
-                print!("{}", current_span);
-                bin.left.print(Some(&new_span));
-
-                print!("{}", current_span);
-                bin.right.print(Some(&new_span));
+                    print!("{}", current_span);
+                    bin.left.print(Some(&new_span));
+                    
+                    print!("{}", current_span);
+                    bin.right.print(Some(&new_span));
+                
             }
-            Expression::UnaryOperator(un) => {
+            Node::UnaryOperator(un) => {
                 println!("{}UnaryOperator : {}", current_span, un.kind);
 
                 print!("{}", current_span);
                 un.operand.print(Some(&new_span));
             }
-            Expression::Parenthesis(parent) => {
+            Node::Parenthesis(parent) => {
                 println!("{}Parenthesis :", current_span);
                 print!("{}", current_span);
-                parent.expr.print(Some(&current_span));
+                parent.expr.print(Some(current_span));
             }
-            Expression::Error => println!("{}{}", current_span, self),
-            Expression::Variable(_) => println!("{}{}", current_span, self),
-            Expression::Constant(_) => println!("{}{}", current_span, self),
-            Expression::Function(func) => {
+            Node::Error => println!("{}{}", current_span, self),
+            Node::Variable(_) => println!("{}{}", current_span, self),
+            Node::Constant(_) => println!("{}{}", current_span, self),
+            Node::Function(func) => {
                 println!("{}Function : {}", current_span, func.function_type.name());
                 for arg in func.function_type.args() {
                     print!("{}", current_span);
@@ -82,52 +83,39 @@ impl Expression {
             }
         }
     }
-
-    pub fn simplify(self) -> Expression {
-        match self {
-            Expression::Number(_) => self,
-            Expression::Variable(_) => self,
-            Expression::Constant(_) => self,
-            Expression::BinaryOperator(binaryoperator) => binaryoperator.simplify(),
-            Expression::UnaryOperator(unaryoperator) => unaryoperator.simplify(),
-            Expression::Parenthesis(parenthesis) => todo!(),
-            Expression::Function(function) => function.simplify(),
-            Expression::Error => panic!("There should not be an error here!"),
-        }
-    }
 }
 
-impl Display for Expression {
+impl Display for Node {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expression::Number(num) => write!(f, "Number : {}", num),
-            Expression::BinaryOperator(bin) => {
-                writeln!(f, "{}", bin.left)?;
+            Node::Number(num) => write!(f, "Number : {}", num),
+            Node::BinaryOperator(bin) => {
                 writeln!(f, "BinaryOperator : {}", bin.kind)?;
-                writeln!(f, "{}\n", bin.right)
+                writeln!(f, "{}", bin.left)?;                
+                writeln!(f, "{}", bin.right)
             }
-            Expression::UnaryOperator(un) => {
+            Node::UnaryOperator(un) => {
                 writeln!(f, "UnaryOprator : {}", un.kind)?;
                 writeln!(f, "{}", un.operand)
             }
-            Expression::Error => writeln!(f, "Error"),
-            Expression::Parenthesis(parent) => {
+            Node::Error => writeln!(f, "Error"),
+            Node::Parenthesis(parent) => {
                 writeln!(f, "Parenthesis : {}", parent.expr)
             }
-            Expression::Variable(var) => write!(f, "Variable : {}", var),
-            Expression::Constant(con) => write!(f, "Constant : {}", con),
-            Expression::Function(func) => write!(f, "Function : {}", func.function_type),
+            Node::Variable(var) => write!(f, "Variable : {}", var),
+            Node::Constant(con) => write!(f, "Constant : {}", con),
+            Node::Function(func) => write!(f, "Function : {}", func.function_type),
         }
     }
 }
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Parenthesis {
-    expr: Expression,
+    expr: Node,
 }
 
 impl Parenthesis {
-    pub fn new(expr: Expression) -> Self {
+    pub fn new(expr: Node) -> Self {
         Self { expr }
     }
 }

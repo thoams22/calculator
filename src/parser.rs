@@ -1,10 +1,10 @@
 use crate::{
     ast::{
         binaryoperator::BinaryOperatorKind, function::Function, function::PredefinedFunction,
-        unaryoperator::UnaryOperatorKind, ConstantKind, Expression,
+        unaryoperator::UnaryOperatorKind, ConstantKind, Node,
     },
     diagnostic::Diagnostics,
-    lexer::{Lexer, Span, Token, TokenKind},
+    lexer::{Lexer, Span, Token, TokenKind}, simplify::math::gcd,
 };
 
 #[derive(PartialEq, Debug, Clone)]
@@ -46,10 +46,6 @@ impl Parser {
         self.tokens.clone()
     }
 
-    pub fn get_diagnostic(&mut self) -> Diagnostics {
-        self.diagnostics.clone()
-    }
-
     pub fn get_diagnostic_message(&mut self) -> Vec<String> {
         self.diagnostics.get_messages()
     }
@@ -58,7 +54,7 @@ impl Parser {
         let index: usize = (self.position as isize + offset).try_into().unwrap();
         self.tokens
             .get(index)
-            .unwrap_or_else(|| self.tokens.get(self.tokens.len() - 1).unwrap())
+            .unwrap_or_else(|| self.tokens.last().unwrap())
             .clone()
     }
 
@@ -72,21 +68,6 @@ impl Parser {
         self.peek_token(0)
     }
 
-    fn eat_while(&mut self, predicate: impl Fn(TokenKind) -> bool) {
-        while predicate(self.current_token().kind) {
-            self.next_token();
-        }
-    }
-
-    fn eat_if(&mut self, predicate: impl Fn(TokenKind) -> bool) -> bool {
-        if predicate(self.current_token().kind) {
-            self.next_token();
-            true
-        } else {
-            false
-        }
-    }
-
     fn equal_or_create_next(&mut self, kind: TokenKind) -> Token {
         if self.current_token().kind == kind {
             self.next_token()
@@ -94,7 +75,7 @@ impl Parser {
             let current = self.current_token().kind;
             self.diagnostics.report_unexpected_token(&current, &kind);
             Token {
-                kind: kind,
+                kind,
                 text: String::new(),
                 span: self.current_token().span,
             }
@@ -108,34 +89,33 @@ impl Parser {
             let current = self.current_token().kind;
             self.diagnostics.report_unexpected_token(&current, &kind);
             Token {
-                kind: kind,
+                kind,
                 text: String::new(),
                 span: self.current_token().span,
             }
         }
     }
 
-    pub fn parse(&mut self) -> Vec<Expression> {
+    pub fn parse(&mut self) -> Vec<Node> {
         let mut ast = Vec::new();
         while let Some(expr) = self.parse_type() {
             ast.push(expr);
-            // println!("{}", self.current_token());
         }
         ast
     }
 
-    fn parse_type(&mut self) -> Option<Expression> {
+    fn parse_type(&mut self) -> Option<Node> {
         if self.current_token().kind == TokenKind::End {
             return None;
         }
         Some(self.parse_expression())
     }
 
-    fn parse_expression(&mut self) -> Expression {
+    fn parse_expression(&mut self) -> Node {
         self.parse_binary_expression(0)
     }
 
-    fn parse_binary_expression(&mut self, precedence: usize) -> Expression {
+    fn parse_binary_expression(&mut self, precedence: usize) -> Node {
         let mut left = self.parse_unary_expression();
 
         while let Some(mut operator) = self.parse_binary_operator() {
@@ -146,7 +126,7 @@ impl Parser {
             self.next_token();
 
             let right = self.parse_binary_expression(op_precedence);
-            left = Expression::binary_operator(operator, left, right);
+            left = Node::binary_operator(operator, left, right);
         }
         left
     }
@@ -163,11 +143,11 @@ impl Parser {
         }
     }
 
-    fn parse_unary_expression(&mut self) -> Expression {
+    fn parse_unary_expression(&mut self) -> Node {
         while let Some(operator) = self.parse_unary_operator() {
             self.next_token();
             let operand = self.parse_unary_expression();
-            return Expression::unary_operator(operator, operand);
+            return Node::unary_operator(operator, operand);
         }
         self.parse_primary()
     }
@@ -179,9 +159,9 @@ impl Parser {
         }
     }
 
-    fn parse_primary(&mut self) -> Expression {
+    fn parse_primary(&mut self) -> Node {
         let current = self.current_token();
-        let result = match current.kind {
+        match current.kind {
             TokenKind::Number => {
                 let expression = self.parse_number_expression();
 
@@ -230,39 +210,38 @@ impl Parser {
                         "*".to_string(),
                     ))
                 }
-                Expression::parenthesis(expression)
+                Node::parenthesis(expression)
             }
             _ => {
                 self.diagnostics.report_unexpected_primary(&current.kind);
                 self.next_token();
-                Expression::Error
+                Node::Error
             }
-        };
-        result
+        }
     }
 
-    fn parse_number_expression(&mut self) -> Expression {
+    fn parse_number_expression(&mut self) -> Node {
         let current = self.next_token();
         match current.text.parse::<i64>() {
-            Ok(number) => Expression::Number(number),
+            Ok(number) => Node::Number(number),
             Err(_) => match current.text.parse::<f64>() {
                 Ok(_) => {
                     let (num, denom) = Self::string_to_fraction(current.text);
-                    Expression::binary_operator(
+                    Node::binary_operator(
                         BinaryOperatorKind::Division,
-                        Expression::Number(num),
-                        Expression::Number(denom),
+                        Node::Number(num),
+                        Node::Number(denom),
                     )
                 }
                 Err(_) => {
                     self.diagnostics.report_unexpected_number(&current);
-                    Expression::Error
+                    Node::Error
                 }
             },
         }
     }
 
-    fn parse_variable(&mut self, mut text: String) -> Expression {
+    fn parse_variable(&mut self, mut text: String) -> Node {
         let mut components = vec![];
 
         if self.peek_token(1).kind == TokenKind::LeftParenthesis {
@@ -280,10 +259,10 @@ impl Parser {
         let (text, constants) = self.parse_constant(text);
 
         if !constants.is_empty() {
-            components.extend(constants.into_iter().map(Expression::Constant));
+            components.extend(constants.into_iter().map(Node::Constant));
         }
 
-        components.extend(text.chars().map(Expression::Variable));
+        components.extend(text.chars().map(Node::Variable));
 
         if components.len() == 1 {
             components.pop().unwrap()
@@ -291,13 +270,13 @@ impl Parser {
             components
                 .into_iter()
                 .reduce(|left, right| {
-                    Expression::binary_operator(BinaryOperatorKind::Multiplication, left, right)
+                    Node::binary_operator(BinaryOperatorKind::Multiplication, left, right)
                 })
                 .unwrap()
         }
     }
 
-    fn parse_function(&mut self, text: &str) -> (Option<Expression>, String) {
+    fn parse_function(&mut self, text: &str) -> (Option<Node>, String) {
         let mut result = (None, text.to_string());
 
         PredefinedFunction::all().iter().any(|func| {
@@ -316,7 +295,7 @@ impl Parser {
                     }
                 }
 
-                arguments.retain(|arg| arg != &Expression::Error);
+                arguments.retain(|arg| arg != &Node::Error);
                 let mut actual = arguments.len();
 
                 if self.current_token().kind == TokenKind::Comma
@@ -333,7 +312,7 @@ impl Parser {
                 self.equal_or_create(TokenKind::RightParenthesis);
 
                 result = (
-                    Some(Expression::function(Function::new_predefined_function(
+                    Some(Node::function(Function::new_predefined_function(
                         function_type,
                         arguments,
                     ))),
@@ -366,7 +345,7 @@ impl Parser {
                 self.equal_or_create(TokenKind::RightParenthesis);
 
                 result = (
-                    Some(Expression::function(Function::new_user_defined_function(
+                    Some(Node::function(Function::new_user_defined_function(
                         function_name.to_string(),
                         arguments,
                     ))),
@@ -414,25 +393,16 @@ impl Parser {
         let float_parts_i64 = floating_part.parse::<i64>().unwrap();
         let numerator = interger_part.parse::<i64>().unwrap() * denominator + float_parts_i64;
 
-        let gcd = Self::gcd(float_parts_i64, denominator);
+        let gcd = gcd(float_parts_i64, denominator);
         (numerator / gcd, denominator / gcd)
-    }
-
-    fn gcd(mut first: i64, mut second: i64) -> i64 {
-        while second != 0 {
-            let r = first % second;
-            first = second;
-            second = r;
-        }
-        first
     }
 }
 
 #[cfg(test)]
 mod tests_parser {
-    use crate::ast::{function, Expression};
+    use crate::ast::{function, Node};
 
-    fn verify_parser(input: &str, expected: Expression) {
+    fn verify_parser(input: &str, expected: Node) {
         let mut parser = super::Parser::new(input);
         let result = parser.parse();
         assert_eq!(result[0], expected);
@@ -442,80 +412,80 @@ mod tests_parser {
     fn negative_number() {
         verify_parser(
             "-2",
-            Expression::unary_operator(super::UnaryOperatorKind::Negation, Expression::Number(2)),
+            Node::unary_operator(super::UnaryOperatorKind::Negation, Node::Number(2)),
         );
         verify_parser(
             "--2",
-            Expression::unary_operator(
+            Node::unary_operator(
                 super::UnaryOperatorKind::Negation,
-                Expression::unary_operator(
+                Node::unary_operator(
                     super::UnaryOperatorKind::Negation,
-                    Expression::Number(2),
+                    Node::Number(2),
                 ),
             ),
         );
         verify_parser(
             "-2 + 3",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Addition,
-                Expression::unary_operator(
+                Node::unary_operator(
                     super::UnaryOperatorKind::Negation,
-                    Expression::Number(2),
+                    Node::Number(2),
                 ),
-                Expression::Number(3),
+                Node::Number(3),
             ),
         );
         verify_parser(
             "3-2",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Subtraction,
-                Expression::Number(3),
-                Expression::Number(2),
+                Node::Number(3),
+                Node::Number(2),
             ),
         );
         verify_parser(
             "3*-2",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Multiplication,
-                Expression::Number(3),
-                Expression::unary_operator(
+                Node::Number(3),
+                Node::unary_operator(
                     super::UnaryOperatorKind::Negation,
-                    Expression::Number(2),
+                    Node::Number(2),
                 ),
             ),
         );
         verify_parser(
             "3/-3",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Division,
-                Expression::Number(3),
-                Expression::unary_operator(
+                Node::Number(3),
+                Node::unary_operator(
                     super::UnaryOperatorKind::Negation,
-                    Expression::Number(3),
+                    Node::Number(3),
                 ),
             ),
         );
         verify_parser(
             "6^-5",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Exponentiation,
-                Expression::Number(6),
-                Expression::unary_operator(
+                Node::Number(6),
+                Node::unary_operator(
                     super::UnaryOperatorKind::Negation,
-                    Expression::Number(5),
+                    Node::Number(5),
                 ),
             ),
         );
         verify_parser(
             "3-2+1",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Addition,
-                Expression::binary_operator(
+                Node::binary_operator(
                     super::BinaryOperatorKind::Subtraction,
-                    Expression::Number(3),
-                    Expression::Number(2),
+                    Node::Number(3),
+                    Node::Number(2),
                 ),
-                Expression::Number(1),
+                Node::Number(1),
             ),
         );
     }
@@ -524,89 +494,89 @@ mod tests_parser {
     fn float() {
         verify_parser(
             "2.5",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Division,
-                Expression::Number(5),
-                Expression::Number(2),
+                Node::Number(5),
+                Node::Number(2),
             ),
         );
         verify_parser(
             "45.76",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Division,
-                Expression::Number(1144),
-                Expression::Number(25),
+                Node::Number(1144),
+                Node::Number(25),
             ),
         );
-        verify_parser("45..443", Expression::Error);
+        verify_parser("45..443", Node::Error);
     }
 
     #[test]
     fn parenthesis() {
         verify_parser(
             "(2+4)",
-            Expression::parenthesis(Expression::binary_operator(
+            Node::parenthesis(Node::binary_operator(
                 super::BinaryOperatorKind::Addition,
-                Expression::Number(2),
-                Expression::Number(4),
+                Node::Number(2),
+                Node::Number(4),
             )),
         );
         verify_parser(
             "2+(4+2)",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Addition,
-                Expression::Number(2),
-                Expression::parenthesis(Expression::binary_operator(
+                Node::Number(2),
+                Node::parenthesis(Node::binary_operator(
                     super::BinaryOperatorKind::Addition,
-                    Expression::Number(4),
-                    Expression::Number(2),
+                    Node::Number(4),
+                    Node::Number(2),
                 )),
             ),
         );
         verify_parser(
             "2+(4+2)+3",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Addition,
-                Expression::binary_operator(
+                Node::binary_operator(
                     super::BinaryOperatorKind::Addition,
-                    Expression::Number(2),
-                    Expression::parenthesis(Expression::binary_operator(
+                    Node::Number(2),
+                    Node::parenthesis(Node::binary_operator(
                         super::BinaryOperatorKind::Addition,
-                        Expression::Number(4),
-                        Expression::Number(2),
+                        Node::Number(4),
+                        Node::Number(2),
                     )),
                 ),
-                Expression::Number(3),
+                Node::Number(3),
             ),
         );
         verify_parser(
             "((2/5)(4+1))3",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Multiplication,
-                Expression::parenthesis(Expression::binary_operator(
+                Node::parenthesis(Node::binary_operator(
                     super::BinaryOperatorKind::Multiplication,
-                    Expression::parenthesis(Expression::binary_operator(
+                    Node::parenthesis(Node::binary_operator(
                         super::BinaryOperatorKind::Division,
-                        Expression::Number(2),
-                        Expression::Number(5),
+                        Node::Number(2),
+                        Node::Number(5),
                     )),
-                    Expression::parenthesis(Expression::binary_operator(
+                    Node::parenthesis(Node::binary_operator(
                         super::BinaryOperatorKind::Addition,
-                        Expression::Number(4),
-                        Expression::Number(1),
+                        Node::Number(4),
+                        Node::Number(1),
                     )),
                 )),
-                Expression::Number(3),
+                Node::Number(3),
             ),
         );
         verify_parser(
             "-(2+4)",
-            Expression::unary_operator(
+            Node::unary_operator(
                 super::UnaryOperatorKind::Negation,
-                Expression::parenthesis(Expression::binary_operator(
+                Node::parenthesis(Node::binary_operator(
                     super::BinaryOperatorKind::Addition,
-                    Expression::Number(2),
-                    Expression::Number(4),
+                    Node::Number(2),
+                    Node::Number(4),
                 )),
             ),
         );
@@ -616,59 +586,59 @@ mod tests_parser {
     fn exponentiation() {
         verify_parser(
             "3^2^3",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Exponentiation,
-                Expression::Number(3),
-                Expression::binary_operator(
+                Node::Number(3),
+                Node::binary_operator(
                     super::BinaryOperatorKind::Exponentiation,
-                    Expression::Number(2),
-                    Expression::Number(3),
+                    Node::Number(2),
+                    Node::Number(3),
                 ),
             ),
         );
         verify_parser(
             "3^2^3^2",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Exponentiation,
-                Expression::Number(3),
-                Expression::binary_operator(
+                Node::Number(3),
+                Node::binary_operator(
                     super::BinaryOperatorKind::Exponentiation,
-                    Expression::Number(2),
-                    Expression::binary_operator(
+                    Node::Number(2),
+                    Node::binary_operator(
                         super::BinaryOperatorKind::Exponentiation,
-                        Expression::Number(3),
-                        Expression::Number(2),
+                        Node::Number(3),
+                        Node::Number(2),
                     ),
                 ),
             ),
         );
         verify_parser(
             "(3^2)^-8",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Exponentiation,
-                Expression::parenthesis(Expression::binary_operator(
+                Node::parenthesis(Node::binary_operator(
                     super::BinaryOperatorKind::Exponentiation,
-                    Expression::Number(3),
-                    Expression::Number(2),
+                    Node::Number(3),
+                    Node::Number(2),
                 )),
-                Expression::unary_operator(
+                Node::unary_operator(
                     super::UnaryOperatorKind::Negation,
-                    Expression::Number(8),
+                    Node::Number(8),
                 ),
             ),
         );
         verify_parser(
             "3^-2^3",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Exponentiation,
-                Expression::Number(3),
-                Expression::binary_operator(
+                Node::Number(3),
+                Node::binary_operator(
                     super::BinaryOperatorKind::Exponentiation,
-                    Expression::unary_operator(
+                    Node::unary_operator(
                         super::UnaryOperatorKind::Negation,
-                        Expression::Number(2),
+                        Node::Number(2),
                     ),
-                    Expression::Number(3),
+                    Node::Number(3),
                 ),
             ),
         );
@@ -678,62 +648,62 @@ mod tests_parser {
     fn implicit_multiplication() {
         verify_parser(
             "2(3)",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Multiplication,
-                Expression::Number(2),
-                Expression::parenthesis(Expression::Number(3)),
+                Node::Number(2),
+                Node::parenthesis(Node::Number(3)),
             ),
         );
         verify_parser(
             "2(3+2)",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Multiplication,
-                Expression::Number(2),
-                Expression::parenthesis(Expression::binary_operator(
+                Node::Number(2),
+                Node::parenthesis(Node::binary_operator(
                     super::BinaryOperatorKind::Addition,
-                    Expression::Number(3),
-                    Expression::Number(2),
+                    Node::Number(3),
+                    Node::Number(2),
                 )),
             ),
         );
         verify_parser(
             "2(3+2)3",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Multiplication,
-                Expression::binary_operator(
+                Node::binary_operator(
                     super::BinaryOperatorKind::Multiplication,
-                    Expression::Number(2),
-                    Expression::parenthesis(Expression::binary_operator(
+                    Node::Number(2),
+                    Node::parenthesis(Node::binary_operator(
                         super::BinaryOperatorKind::Addition,
-                        Expression::Number(3),
-                        Expression::Number(2),
+                        Node::Number(3),
+                        Node::Number(2),
                     )),
                 ),
-                Expression::Number(3),
+                Node::Number(3),
             ),
         );
 
         verify_parser(
             "2(3+2)3(2+1)",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Multiplication,
-                Expression::binary_operator(
+                Node::binary_operator(
                     super::BinaryOperatorKind::Multiplication,
-                    Expression::binary_operator(
+                    Node::binary_operator(
                         super::BinaryOperatorKind::Multiplication,
-                        Expression::Number(2),
-                        Expression::parenthesis(Expression::binary_operator(
+                        Node::Number(2),
+                        Node::parenthesis(Node::binary_operator(
                             super::BinaryOperatorKind::Addition,
-                            Expression::Number(3),
-                            Expression::Number(2),
+                            Node::Number(3),
+                            Node::Number(2),
                         )),
                     ),
-                    Expression::Number(3),
+                    Node::Number(3),
                 ),
-                Expression::parenthesis(Expression::binary_operator(
+                Node::parenthesis(Node::binary_operator(
                     super::BinaryOperatorKind::Addition,
-                    Expression::Number(2),
-                    Expression::Number(1),
+                    Node::Number(2),
+                    Node::Number(1),
                 )),
             ),
         );
@@ -741,60 +711,60 @@ mod tests_parser {
 
     #[test]
     fn variables() {
-        verify_parser("x", Expression::Variable('x'));
+        verify_parser("x", Node::Variable('x'));
         verify_parser(
             "x+2",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Addition,
-                Expression::Variable('x'),
-                Expression::Number(2),
+                Node::Variable('x'),
+                Node::Number(2),
             ),
         );
         verify_parser(
             "x+2y",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Addition,
-                Expression::Variable('x'),
-                Expression::binary_operator(
+                Node::Variable('x'),
+                Node::binary_operator(
                     super::BinaryOperatorKind::Multiplication,
-                    Expression::Number(2),
-                    Expression::Variable('y'),
+                    Node::Number(2),
+                    Node::Variable('y'),
                 ),
             ),
         );
         verify_parser(
             "x+2y+3",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Addition,
-                Expression::binary_operator(
+                Node::binary_operator(
                     super::BinaryOperatorKind::Addition,
-                    Expression::Variable('x'),
-                    Expression::binary_operator(
+                    Node::Variable('x'),
+                    Node::binary_operator(
                         super::BinaryOperatorKind::Multiplication,
-                        Expression::Number(2),
-                        Expression::Variable('y'),
+                        Node::Number(2),
+                        Node::Variable('y'),
                     ),
                 ),
-                Expression::Number(3),
+                Node::Number(3),
             ),
         );
         verify_parser(
             "x+2y+3z",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Addition,
-                Expression::binary_operator(
+                Node::binary_operator(
                     super::BinaryOperatorKind::Addition,
-                    Expression::Variable('x'),
-                    Expression::binary_operator(
+                    Node::Variable('x'),
+                    Node::binary_operator(
                         super::BinaryOperatorKind::Multiplication,
-                        Expression::Number(2),
-                        Expression::Variable('y'),
+                        Node::Number(2),
+                        Node::Variable('y'),
                     ),
                 ),
-                Expression::binary_operator(
+                Node::binary_operator(
                     super::BinaryOperatorKind::Multiplication,
-                    Expression::Number(3),
-                    Expression::Variable('z'),
+                    Node::Number(3),
+                    Node::Variable('z'),
                 ),
             ),
         );
@@ -804,20 +774,20 @@ mod tests_parser {
     fn function() {
         verify_parser(
             "ln(2)",
-            Expression::function(function::Function::new_predefined_function(
+            Node::function(function::Function::new_predefined_function(
                 function::PredefinedFunction::Ln,
-                vec![Expression::Number(2)],
+                vec![Node::Number(2)],
             )),
         );
 
         verify_parser(
             "ln(2+3)",
-            Expression::function(function::Function::new_predefined_function(
+            Node::function(function::Function::new_predefined_function(
                 function::PredefinedFunction::Ln,
-                vec![Expression::binary_operator(
+                vec![Node::binary_operator(
                     super::BinaryOperatorKind::Addition,
-                    Expression::Number(2),
-                    Expression::Number(3),
+                    Node::Number(2),
+                    Node::Number(3),
                 )],
             )),
         );
@@ -825,12 +795,12 @@ mod tests_parser {
         // sin(2+3)
         verify_parser(
             "sin(2+3)",
-            Expression::function(function::Function::new_predefined_function(
+            Node::function(function::Function::new_predefined_function(
                 function::PredefinedFunction::Sin,
-                vec![Expression::binary_operator(
+                vec![Node::binary_operator(
                     super::BinaryOperatorKind::Addition,
-                    Expression::Number(2),
-                    Expression::Number(3),
+                    Node::Number(2),
+                    Node::Number(3),
                 )],
             )),
         );
@@ -838,12 +808,12 @@ mod tests_parser {
         // asin(2+3)
         verify_parser(
             "asin(2+3)",
-            Expression::function(function::Function::new_predefined_function(
+            Node::function(function::Function::new_predefined_function(
                 function::PredefinedFunction::Asin,
-                vec![Expression::binary_operator(
+                vec![Node::binary_operator(
                     super::BinaryOperatorKind::Addition,
-                    Expression::Number(2),
-                    Expression::Number(3),
+                    Node::Number(2),
+                    Node::Number(3),
                 )],
             )),
         );
@@ -851,41 +821,41 @@ mod tests_parser {
         //a(x)
         verify_parser(
             "a(x)",
-            Expression::function(function::Function::new_user_defined_function(
+            Node::function(function::Function::new_user_defined_function(
                 "a".to_string(),
-                vec![Expression::Variable('x')],
+                vec![Node::Variable('x')],
             )),
         );
 
         //ab(x, r)
         verify_parser(
             "ab(x, r)",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Multiplication,
-                Expression::function(function::Function::new_user_defined_function(
+                Node::function(function::Function::new_user_defined_function(
                     "b".to_string(),
-                    vec![Expression::Variable('x'), Expression::Variable('r')],
+                    vec![Node::Variable('x'), Node::Variable('r')],
                 )),
-                Expression::Variable('a'),
+                Node::Variable('a'),
             ),
         );
 
         //ab(x, r)b(x, t)
         verify_parser(
             "ab(x, r)b(x, t)",
-            Expression::binary_operator(
+            Node::binary_operator(
                 super::BinaryOperatorKind::Multiplication,
-                Expression::binary_operator(
+                Node::binary_operator(
                     super::BinaryOperatorKind::Multiplication,
-                    Expression::function(function::Function::new_user_defined_function(
+                    Node::function(function::Function::new_user_defined_function(
                         "b".to_string(),
-                        vec![Expression::Variable('x'), Expression::Variable('r')],
+                        vec![Node::Variable('x'), Node::Variable('r')],
                     )),
-                    Expression::Variable('a'),
+                    Node::Variable('a'),
                 ),
-                Expression::function(function::Function::new_user_defined_function(
+                Node::function(function::Function::new_user_defined_function(
                     "b".to_string(),
-                    vec![Expression::Variable('x'), Expression::Variable('t')],
+                    vec![Node::Variable('x'), Node::Variable('t')],
                 )),
             ),
         );

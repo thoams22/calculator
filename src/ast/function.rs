@@ -1,15 +1,15 @@
 use std::fmt::{Formatter, Display};
 
-use super::Expression;
+use super::Node;
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum FunctionType {
-    Predefined(PredefinedFunction, Vec<Expression>),
-    UserDefined(String, Vec<Expression>),
+    Predefined(PredefinedFunction, Vec<Node>),
+    UserDefined(String, Vec<Node>),
 }
 
 impl FunctionType {
-    pub fn args(&self) -> &Vec<Expression> {
+    pub fn args(&self) -> &Vec<Node> {
         match self {
             FunctionType::Predefined(_, args) => args,
             FunctionType::UserDefined(_, args) => args,
@@ -23,12 +23,12 @@ impl FunctionType {
         }
     }
 
-    pub fn args_count(&self) -> usize {
-        match self {
-            FunctionType::Predefined(kind, _) => kind.args_count(),
-            FunctionType::UserDefined(_, args) => args.len(),
-        }
-    }
+    // pub fn args_count(&self) -> usize {
+    //     match self {
+    //         FunctionType::Predefined(kind, _) => kind.args_count(),
+    //         FunctionType::UserDefined(_, args) => args.len(),
+    //     }
+    // }
 }
 
 impl Display for FunctionType {
@@ -140,25 +140,15 @@ pub struct Function {
 
 // Constructor
 impl Function {
-    pub fn new(function_type: FunctionType) -> Self {
-        Self { function_type }
-    }
-
-    pub fn new_predefined_function(kind: PredefinedFunction, args: Vec<Expression>) -> Self {
+    pub fn new_predefined_function(kind: PredefinedFunction, args: Vec<Node>) -> Self {
         Self {
             function_type: FunctionType::Predefined(kind, args),
         }
     }
 
-    pub fn new_user_defined_function(name: String, args: Vec<Expression>) -> Self {
+    pub fn new_user_defined_function(name: String, args: Vec<Node>) -> Self {
         Self {
             function_type: FunctionType::UserDefined(name, args),
         }
-    }
-}
-
-impl Function {
-    pub fn simplify(self) -> Expression {
-        todo!()
     }
 }

@@ -18,14 +18,13 @@
 // factorial => Gamma function
 use std::io;
 
-use crate::{parser::Parser, ast::Expression};
+use crate::{parser::Parser, simplify::Expression};
 
+mod ast;
 mod diagnostic;
-mod expression;
 mod lexer;
 mod parser;
-mod tokenizer;
-mod ast;
+mod simplify;
 
 fn main() {
     let mut expression = String::new();
@@ -35,8 +34,7 @@ fn main() {
         .expect("Failed to read line");
     expression = expression.trim_end().to_string();
 
-    while expression != "exit".to_string() {
-
+    while expression != *"exit" {
         let mut parser = Parser::new(&expression);
 
         println!("\nTokens Lexed\n");
@@ -44,7 +42,6 @@ fn main() {
             print!("{token}");
         }
         println!();
-
 
         if !parser.get_diagnostic_message().is_empty() {
             println!("\n***LEXER ERROR***\n");
@@ -70,28 +67,24 @@ fn main() {
                 }
                 println!("\n***END OF ERROR***");
                 println!();
-            } 
+            } else {
+                // let mut simplified_expression: Vec<Expression> = Vec::new();
 
-            else {
+                // for statement in result {
+                //     simplified_expression.push(statement.simplify());
+                // }
 
-                let mut simplified_expression: Vec<Expression> = Vec::new();
-                
-                for statement in result {
-                    simplified_expression.push(statement.simplify());
-                }
-
-                for statement in simplified_expression {
-                    println!("\n");
-                    statement.print(None);
-                }
-
+                // for statement in simplified_expression {
+                //     println!("\n");
+                //     statement.print(None);
+                // }
             }
         }
 
         expression.clear();
         io::stdin()
-        .read_line(&mut expression)
-        .expect("Failed to read line");
+            .read_line(&mut expression)
+            .expect("Failed to read line");
         expression = expression.trim_end().to_string();
     }
 }
