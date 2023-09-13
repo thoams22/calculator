@@ -1,4 +1,4 @@
-use crate::simplify::Expression;
+use crate::ast::Expression;
 
 use super::addition::Addition;
 
@@ -31,13 +31,19 @@ impl Multiplication {
             return false;
         }
 
-        for expr in self.sub_expr.iter() {
-            if !other.sub_expr.contains(expr) {
-                return false;
+        let len = self.sub_expr.len();
+        let mut index: Vec<bool> = vec![false; len * 2];
+        'i: for i in 0..len {
+            for j in 0..len {
+                if !(index[i] || index[j + len]) && self.sub_expr[i].equal(other.sub_expr.get(j).unwrap()) {
+                    index[i] = true;
+                    index[j + len] = true;
+                    continue 'i;
+                }
             }
+            return false;
         }
-
-        true
+        return index.iter().all(|&x| x);
     }
 
     pub fn iter(&self) -> MultiplicationIter {
@@ -60,6 +66,7 @@ impl Multiplication {
         self.regroup_nested_multiplication()
             .multiplication() // Mult(a, a) -> Exp(a, 2)
             .multiplication_on_sum() // Mult(Add(4, 2), Add(8, 3)) -> 66
+            .multiplication_fraction() // Mult(1/2, 2) -> 1, Mult(1/2, 2/3) -> 1/3
             .multiplication_number() // Mult(8, 3, 2, 4) -> 192, Mult(a, 1) -> a , Mult(a, 0) -> 0
     }
 
@@ -86,11 +93,14 @@ impl Multiplication {
                     let mut temp_distributed: Addition = Addition::from_vec(Vec::new());
                     if let Expression::Addition(add_2) = a {
                         for k in 0..add_2.sub_expr.len() {
-                            temp_distributed.sub_expr
+                            temp_distributed
+                                .sub_expr
                                 .extend(Self::distribution(add_2.sub_expr.get(k).unwrap(), &add));
                         }
                     } else {
-                        temp_distributed.sub_expr.extend(Self::distribution(&a, &add));
+                        temp_distributed
+                            .sub_expr
+                            .extend(Self::distribution(&a, &add));
                     }
                     self.sub_expr[j] = Expression::Addition(Box::new(temp_distributed));
                     remove_indices.push(i);
@@ -111,10 +121,39 @@ impl Multiplication {
     }
 
     fn distribution(distributor: &Expression, distributed: &Addition) -> Vec<Expression> {
-        distributed.sub_expr
+        distributed
+            .sub_expr
             .iter()
             .map(|expr| Expression::multiplication(distributor.clone(), expr.clone()))
             .collect()
+    }
+
+    fn multiplication_fraction(mut self) -> Multiplication {
+        let mut i = 0;
+        while i < self.sub_expr.len() {
+            if let Expression::Fraction(frac) = &self.sub_expr[i] {
+                let numerator = frac.sub_expr[0].clone();
+                let denominator = frac.sub_expr[1].clone();
+
+                self.sub_expr.swap_remove(i);
+
+                return Multiplication::new(
+                    Expression::Number(1),
+                    Expression::fraction(
+                        Expression::multiplication(
+                            Expression::multiplication_from_vec(self.sub_expr.clone()),
+                            numerator,
+                        ),
+                        denominator,
+                    )
+                    .simplify(),
+                );
+            }
+            else {
+                i += 1;
+            }
+        }
+        self
     }
 
     fn multiplication(mut self) -> Multiplication {
@@ -219,8 +258,13 @@ impl Multiplication {
                 Expression::Number(0)
             }
             1 => non_numbers.pop().unwrap(),
-            _ => Expression::Multiplication(Box::new(Self::from_vec(non_numbers))),
+            _ => Expression::Multiplication(Box::new(Self::from_vec(non_numbers).order())),
         }
+    }
+
+    fn order(mut self) -> Multiplication {
+        self.sub_expr.sort_by_key(|a| a.get_order());
+        self
     }
 }
 

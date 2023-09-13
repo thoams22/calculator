@@ -1,10 +1,15 @@
-use crate::{simplify::Expression, ast::{function::PredefinedFunction, ConstantKind}};
+use crate::ast::Expression;
 
-use super::{multiplication::Multiplication, function::FunctionType, math::multinomial_expansion};
+use super::{
+    function::{FunctionType, PredefinedFunction},
+    math::multinomial_expansion,
+    multiplication::Multiplication,
+    ConstantKind,
+};
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Exponentiation {
-    pub sub_expr: [Expression;2],
+    pub sub_expr: [Expression; 2],
     pub simplified: bool,
 }
 
@@ -50,46 +55,66 @@ impl Exponentiation {
         }
         self.simplified = true;
 
-        match (&self.get_base(), &self.get_exponent()) {
+        match (self.get_base(), self.get_exponent()) {
             (Expression::Number(num1), Expression::Number(num2)) => {
-                Expression::Number(num1.pow((*num2).try_into().unwrap()))
+                Expression::Number(num1.pow((num2).try_into().unwrap()))
             }
-            (_, Expression::Function(fun)) => self.simplify_exponent_logarithm(fun),
+            (_, Expression::Function(fun)) => self.simplify_exponent_logarithm(&fun),
+            // (a*b)^c = a^c * b^c
             (Expression::Multiplication(mult), exponent) => {
                 let mut distributed_exponent = Multiplication::from_vec(vec![]);
                 mult.iter().for_each(|expr| {
-                    distributed_exponent.sub_expr
+                    distributed_exponent
+                        .sub_expr
                         .push(Expression::exponentiation(expr.clone(), exponent.clone()))
                 });
                 Expression::Multiplication(Box::new(distributed_exponent)).simplify()
             }
-            // (a^b)^c = a^(b*c)	
-            (Expression::Exponentiation(expression), exponent) => {
-                Expression::exponentiation(expression.get_base(), Expression::multiplication(expression.get_exponent(), exponent.clone())).simplify()
+            (Expression::Addition(add), Expression::Number(num)) => {
+                if num.is_positive() {
+                    multinomial_expansion(num, *add)
+                } else {
+                    self.simplify_exponent_one_zero()
+                }
             }
+            // (a/b)^c = (a^c)/(b^c)
+            (Expression::Fraction(frac), exponent) => Expression::fraction(
+                Expression::exponentiation(frac.get_numerator(), exponent.clone()),
+                Expression::exponentiation(frac.get_denominator(), exponent),
+            )
+            .simplify(),
+            // (a^b)^c = a^(b*c)
+            (Expression::Exponentiation(expression), exponent) => Expression::exponentiation(
+                expression.get_base(),
+                Expression::multiplication(expression.get_exponent(), exponent.clone()),
+            )
+            .simplify(),
             (_, _) => self.simplify_exponent_one_zero(),
         }
     }
 
     // e^ln(x) = x
-    // a^log(a, x) = x	
+    // a^log(a, x) = x
     pub fn simplify_exponent_logarithm(self, function: &FunctionType) -> Expression {
-            if let FunctionType::Predefined(fun, args) = function {
-                match fun {
-                    PredefinedFunction::Ln => {
-                        if self.get_base().equal(&Expression::Constant(ConstantKind::E)) {
-                            return args[0].clone();
-                        }
-                    },
-                    PredefinedFunction::Log => {
-                        if self.get_base().equal(&args[0]) {
-                            return args[1].clone();
-                        }
-                    },
-                    _ => (),
+        if let FunctionType::Predefined(fun, args) = function {
+            match fun {
+                PredefinedFunction::Ln => {
+                    if self
+                        .get_base()
+                        .equal(&Expression::Constant(ConstantKind::E))
+                    {
+                        return args[0].clone();
+                    }
                 }
+                PredefinedFunction::Log => {
+                    if self.get_base().equal(&args[0]) {
+                        return args[1].clone();
+                    }
+                }
+                _ => (),
             }
-            
+        }
+
         Expression::Exponentiation(Box::new(self))
     }
 
@@ -101,18 +126,6 @@ impl Exponentiation {
                 return self.sub_expr[0].clone();
             } else {
                 return Expression::Exponentiation(Box::new(self));
-                // return self.identity();
-            }
-        }
-        Expression::Exponentiation(Box::new(self))
-    }
-
-    fn identity(self) -> Expression {
-        if let (Expression::Addition(add), Expression::Number(num)) =
-            (self.get_base(), self.get_exponent())
-        {
-            if num.is_positive() {
-                return multinomial_expansion(num, *add);
             }
         }
         Expression::Exponentiation(Box::new(self))

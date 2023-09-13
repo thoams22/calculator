@@ -1,4 +1,4 @@
-use crate::simplify::Expression;
+use crate::ast::Expression;
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Equality {
@@ -17,12 +17,23 @@ impl Equality {
 
 impl Equality {
     pub fn equal(&self, other: &Equality) -> bool {
-        if self.sub_expr[0].equal(&other.sub_expr[0]) && self.sub_expr[1].equal(&other.sub_expr[1])
-        {
-            return true;
-        }
+        self.sub_expr[0].equal(&other.sub_expr[0]) && self.sub_expr[1].equal(&other.sub_expr[1])
+    }
 
-        false
+    pub fn get_left_side(&self) -> Expression {
+        self.sub_expr[0].clone()
+    }
+
+    pub fn get_right_side(&self) -> Expression {
+        self.sub_expr[1].clone()
+    }
+
+    pub fn replace_left_side(&mut self, new_left_side: Expression) {
+        self.sub_expr[0] = new_left_side;
+    }
+
+    pub fn replace_right_side(&mut self, new_right_side: Expression) {
+        self.sub_expr[1] = new_right_side;
     }
 }
 

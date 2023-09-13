@@ -5,7 +5,6 @@
 
 // Systeme équation
 // Polynome
-// Solve for a var
 // How to make derivate and integral
 // Differential equations
 // Complex numbers
@@ -16,15 +15,18 @@
 // base conversion
 // boolean algebra
 // factorial => Gamma function
+// matrix
+
+
 use std::io;
 
-use crate::{parser::Parser, simplify::Expression};
+use crate::{parser::Parser, ast::Expression};
 
-mod ast;
 mod diagnostic;
 mod lexer;
 mod parser;
-mod simplify;
+mod ast;
+mod solver;
 
 fn main() {
     let mut expression = String::new();
@@ -37,11 +39,11 @@ fn main() {
     while expression != *"exit" {
         let mut parser = Parser::new(&expression);
 
-        println!("\nTokens Lexed\n");
-        for token in parser.get_tokens() {
-            print!("{token}");
-        }
-        println!();
+        // println!("\nTokens Lexed\n");
+        // for token in parser.get_tokens() {
+        //     print!("{token}");
+        // }
+        // println!();
 
         if !parser.get_diagnostic_message().is_empty() {
             println!("\n***LEXER ERROR***\n");
@@ -54,10 +56,10 @@ fn main() {
         } else {
             let result = parser.parse();
 
-            for statement in &result {
-                println!("\n");
-                statement.print(None);
-            }
+            // for statement in &result {
+            //     println!("\n");
+            //     statement.print_tree(None);
+            // }
 
             if !parser.get_diagnostic_message().is_empty() {
                 println!("\n*** PARSER ERROR***\n");
@@ -68,16 +70,17 @@ fn main() {
                 println!("\n***END OF ERROR***");
                 println!();
             } else {
-                // let mut simplified_expression: Vec<Expression> = Vec::new();
 
-                // for statement in result {
-                //     simplified_expression.push(statement.simplify());
-                // }
+                let mut simplified_expression: Vec<Expression> = Vec::new();
 
-                // for statement in simplified_expression {
-                //     println!("\n");
-                //     statement.print(None);
-                // }
+                for statement in result {
+                    simplified_expression.push(statement.simplify());
+                }
+
+                for statement in simplified_expression {
+                    println!("\n");
+                    statement.print_tree(None);
+                }
             }
         }
 
