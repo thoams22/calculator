@@ -187,7 +187,10 @@ pub fn find_divisors(n: u64) -> Vec<u64> {
 }
 
 pub fn prime_factor(mut n: i64) -> Vec<(i64, i64)> {
-    let mut factor = Vec::new();
+    if n == 1 {
+        return vec![(1, 1)];
+    }
+    let mut factor: Vec<(i64, i64)> = Vec::new();
     while n % 2 == 0 {
         if factor.is_empty() {
             factor.push((2, 1));
@@ -197,16 +200,15 @@ pub fn prime_factor(mut n: i64) -> Vec<(i64, i64)> {
         n = n/2;
     }
 
-    for i in 3..((n as f64).sqrt().ceil() as i64) {
+    for i in 3..=((n as f64).sqrt().round() as i64) {
         while n % i == 0 {
-
-            if factor.is_empty() {
+            if factor.last().unwrap_or(&(0, 0)).0 != i {
                 factor.push((i, 1));
             } else {
                 let len = factor.len();
                 factor[len - 1].1 += 1;
             }
-            n = n/i;
+            n /= i;
         }
     }
 

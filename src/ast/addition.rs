@@ -245,7 +245,7 @@ impl Addition {
         }
     }
 
-    fn order(mut self) -> Addition {
+    pub fn order(mut self) -> Addition {
         self.sub_expr.sort_by_key(|b| std::cmp::Reverse(b.get_order()));
         self
     }

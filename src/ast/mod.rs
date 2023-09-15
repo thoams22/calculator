@@ -351,6 +351,89 @@ impl Expression {
             }
         }
     }
+
+    pub fn print_console(&self, depth: i8) {
+        match self {
+            Expression::Number(num) => println!("{num} {depth}"),
+            Expression::Constant(cons) => println!("{cons} {depth}"),
+            Expression::Variable(var) => println!("{var} {depth}"),
+            Expression::Addition(add) => {
+                print!("+ ");
+                for expr in add.sub_expr.iter() {
+                    expr.print_console(depth);
+                }
+            }
+            Expression::Multiplication(mult) => {
+                print!("* ");
+                for expr in mult.sub_expr.iter() {
+                    expr.print_console(depth);
+                }
+            }
+            Expression::Exponentiation(expo) => {
+                println!("base {depth}");
+                expo.get_base().print_console(depth);
+                println!("exponent {depth}");
+                expo.get_exponent().print_console(depth + 1);
+            }
+            Expression::Fraction(frac) => {
+                frac.get_numerator().print_console(depth + 1);
+                println!("bar {depth}");
+                frac.get_denominator().print_console(depth - 1);
+            }
+            Expression::Equality(eq) => {
+                eq.get_left_side().print_console(depth);
+                eq.get_right_side().print_console(depth);
+            }
+            Expression::Negation(neg) => {
+                println!("- {depth}");
+                neg.sub_expr.print_console(depth);
+            }
+            Expression::Function(func) => {
+                println!("{func} {depth}");
+            }
+            Expression::Error => println!("there should be no error in the expression tree"),
+        }
+    }
+}
+
+impl Display for Expression {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Expression::Number(num) => write!(f, "{num}"),
+            Expression::Variable(var) => write!(f, "{var}"),
+            Expression::Constant(cons) => write!(f, "{cons}"),
+            Expression::Addition(add) => {
+                let mut first = true;
+                for expr in add.sub_expr.iter() {
+                    if first {
+                        first = false;
+                    } else {
+                        write!(f, " + ")?;
+                    }
+                    write!(f, "{}", expr)?;
+                }
+                Ok(())
+            }
+            Expression::Multiplication(mult) => {
+                let mut first = true;
+                for expr in mult.sub_expr.iter() {
+                    if first {
+                        first = false;
+                    } else {
+                        write!(f, " * ")?;
+                    }
+                    write!(f, "{}", expr)?;
+                }
+                Ok(())
+            }
+            Expression::Exponentiation(expo) => write!(f, "({})^({})", expo.get_base(), expo.get_exponent()),
+            Expression::Fraction(frac) => write!(f, "({}) / ({})", frac.get_numerator(), frac.get_denominator()),
+            Expression::Equality(eq) => write!(f, "{} = {}", eq.get_left_side(), eq.get_right_side()),
+            Expression::Negation(neg) => write!(f, "-({})", neg.sub_expr),
+            Expression::Function(func) => write!(f, "{}", func),
+            Expression::Error => write!(f, "Error"),
+        }
+    }
 }
 
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -1222,6 +1305,82 @@ mod test_simplify {
                 Expression::Number(2),
                 Expression::addition(Expression::Variable('n'), Expression::Number(-1))
             )
+        )));
+
+        // 4a / 2
+        assert!(Expression::fraction(
+            Expression::multiplication(Expression::Number(4), Expression::Variable('a')),
+            Expression::Number(2)
+        )
+        .simplify()
+        .equal(&Expression::multiplication(
+            Expression::Number(2),
+            Expression::Variable('a')
+        )));
+
+        // 4a / 2b
+        assert!(Expression::fraction(
+            Expression::multiplication(Expression::Number(4), Expression::Variable('a')),
+            Expression::multiplication(Expression::Number(2), Expression::Variable('b'))
+        )
+        .simplify()
+        .equal(&Expression::fraction(
+            Expression::multiplication(Expression::Number(2), Expression::Variable('a')),
+            Expression::Variable('b')
+        )));
+
+        // (12a + 6)/(24a^2)
+        assert!(Expression::fraction(
+            Expression::addition(
+                Expression::multiplication(Expression::Number(12), Expression::Variable('a')),
+                Expression::Number(6)
+            ),
+            Expression::multiplication(
+                Expression::Number(24),
+                Expression::exponentiation(Expression::Variable('a'), Expression::Number(2))
+            )
+        )
+        .simplify()
+        .equal(&Expression::fraction(
+            Expression::addition(
+                Expression::Number(1),
+                Expression::multiplication(Expression::Number(2), Expression::Variable('a'))
+            ),
+            Expression::multiplication(
+                Expression::Number(4),
+                Expression::exponentiation(Expression::Variable('a'), Expression::Number(2))
+            )
+        )));
+
+        // (18x^2y + 3xy + 9xy^2) / (6x^2y)
+        assert!(Expression::fraction(
+            Expression::addition_from_vec(vec![
+                Expression::multiplication(
+                    Expression::multiplication(Expression::Number(18), Expression::Variable('y')),
+                    Expression::exponentiation(Expression::Variable('x'), Expression::Number(2))
+                ),
+                Expression::multiplication(
+                    Expression::multiplication(Expression::Number(3), Expression::Variable('x')),
+                    Expression::Variable('y')
+                ),
+                Expression::multiplication(
+                    Expression::multiplication(Expression::Number(9), Expression::Variable('x')),
+                    Expression::exponentiation(Expression::Variable('y'), Expression::Number(2))
+                ),
+            ]),
+            Expression::multiplication(
+                Expression::multiplication(Expression::Number(6), Expression::Variable('y')),
+                Expression::exponentiation(Expression::Variable('x'), Expression::Number(2))
+            )
+        )
+        .simplify()
+        .equal(&Expression::fraction(
+            Expression::addition_from_vec(vec![
+                Expression::multiplication(Expression::Number(3), Expression::Variable('y')),
+                Expression::Number(1),
+                Expression::multiplication(Expression::Number(6), Expression::Variable('x')),
+            ]),
+            Expression::multiplication(Expression::Number(2), Expression::Variable('x'))
         )));
 
         // (a/b)/(c/d)

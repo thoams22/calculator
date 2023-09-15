@@ -80,6 +80,8 @@ fn main() {
                 for statement in simplified_expression {
                     println!("\n");
                     statement.print_tree(None);
+                    println!("{statement}");
+                    statement.print_console(0);
                 }
             }
         }

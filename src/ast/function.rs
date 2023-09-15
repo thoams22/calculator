@@ -268,6 +268,27 @@ impl FunctionType {
     }
 }
 
+impl Display for FunctionType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FunctionType::Predefined(fun, args) => {
+                write!(f, "{fun}(")?;
+                for arg in args {
+                    write!(f, "{arg}, ")?;
+                }
+                write!(f, ")")
+            },
+            FunctionType::UserDefined(fun, args) => {
+                write!(f, "{fun}(")?;
+                for arg in args {
+                    write!(f, "{arg}, ")?;
+                }
+                write!(f, ")")
+            },
+        }
+    }
+}
+
 #[derive(PartialEq, Debug, Clone)]
 pub enum PredefinedFunction {
     // 1 args
