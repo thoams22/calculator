@@ -7,6 +7,7 @@ pub(crate) mod math;
 pub mod multiplication;
 pub mod negation;
 
+use core::num;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
@@ -293,7 +294,10 @@ impl Expression {
             Expression::Error => panic!("There should be no error in the expression tree"),
         }
     }
+}
 
+// Print functions
+impl Expression {
     pub fn print_tree(&self, span: Option<&str>) {
         let current_span = span.unwrap_or("");
         let new_span = current_span.to_string() + "   ";
@@ -352,46 +356,408 @@ impl Expression {
         }
     }
 
-    pub fn print_console(&self, depth: i8) {
+    pub fn print_console(&self) {
+        let mut position: Vec<(String, (i8, i8))> = Vec::new();
+        self.calc_pos(&mut position, State::Same(0, 0));
+        // println!("{:?}", position);
+
+        let (min_x, max_x, min_y, max_y) = position.iter().fold(
+            (0, 0, 0, 0),
+            |(min_x, max_x, min_y, max_y), &(_, (y, x))| {
+                (min_x.min(x), max_x.max(x), min_y.min(y), max_y.max(y))
+            },
+        );
+
+        let mut grid = HashMap::new();
+
+        // Populate the grid with characters
+        for (character, (y, x)) in position {
+            grid.insert((y, x), character);
+        }
+
+        // Print the grid
+        let mut skip = 0;
+        for y in (min_y..=max_y).rev() {
+            let mut prev_char: &String = &"".to_string();
+            for x in min_x..=max_x {
+                if skip > 0 {
+                    skip -= 1;
+                    continue;
+                }
+                if let Some(character) = grid.get(&(y, x)) {
+                    print!("{}", character);
+                    skip = character.len() as i8 - 1;
+                } else {
+                    print!(" ");
+                }
+            }
+            println!();
+        }
+    }
+
+    fn calc_pos(&self, position: &mut Vec<(String, (i8, i8))>, prev_state: State) {
+        // faire un grand array de hauteur height et length
+        // et mettre les caractères dedans en fonction de current_length et current_height
         match self {
-            Expression::Number(num) => println!("{num} {depth}"),
-            Expression::Constant(cons) => println!("{cons} {depth}"),
-            Expression::Variable(var) => println!("{var} {depth}"),
+            Expression::Number(num) => position.push((num.to_string(), prev_state.get_pos())),
+            Expression::Variable(var) => position.push((var.to_string(), prev_state.get_pos())),
+            Expression::Constant(cons) => {
+                position.push((cons.as_text().to_string(), prev_state.get_pos()))
+            }
             Expression::Addition(add) => {
-                print!("+ ");
-                for expr in add.sub_expr.iter() {
-                    expr.print_console(depth);
+                let mut max_height = 1;
+                let mut max_height_index = 0;
+                for (i, expr) in add.sub_expr.iter().enumerate() {
+                    let height = expr.get_height();
+                    if height > max_height {
+                        max_height = height;
+                        max_height_index = i;
+                    }
+                }
+
+                let len = position.len();
+                let mut position_clone = position.clone();
+
+                add.sub_expr[max_height_index].calc_pos(&mut position_clone, prev_state);
+
+                let pos_y = position_clone[len].1 .0;
+                let mut pos_x = prev_state.get_pos_x();
+
+                for (i, expr) in add.sub_expr.iter().enumerate() {
+                    if i > 0 {
+                        position.push((" + ".to_string(), (pos_y, pos_x)));
+                        pos_x += 3;
+                    }
+
+                    expr.calc_pos(position, State::Same(pos_y, pos_x));
+                    pos_x += expr.get_length();
                 }
             }
             Expression::Multiplication(mult) => {
-                print!("* ");
-                for expr in mult.sub_expr.iter() {
-                    expr.print_console(depth);
+                let mut max_height = 1;
+                let mut max_height_index = 0;
+                for (i, expr) in mult.sub_expr.iter().enumerate() {
+                    let height = expr.get_height();
+                    if height > max_height {
+                        max_height = height;
+                        max_height_index = i;
+                    }
+                }
+
+                let len = position.len();
+                let mut position_clone = position.clone();
+
+                mult.sub_expr[max_height_index].calc_pos(&mut position_clone, prev_state);
+
+                let pos_y = position_clone[len].1 .0;
+                let mut pos_x = prev_state.get_pos_x();
+
+                for (i, expr) in mult.sub_expr.iter().enumerate() {
+                    if i > 0 {
+                        position.push((" * ".to_string(), (pos_y, pos_x)));
+                        pos_x += 3;
+                    }
+
+                    expr.calc_pos(position, State::Same(pos_y, pos_x));
+                    pos_x += expr.get_length();
                 }
             }
-            Expression::Exponentiation(expo) => {
-                println!("base {depth}");
-                expo.get_base().print_console(depth);
-                println!("exponent {depth}");
-                expo.get_exponent().print_console(depth + 1);
-            }
+            Expression::Exponentiation(expo) => match prev_state {
+                State::Over(mut pos_y, mut pos_x) | State::Same(mut pos_y, mut pos_x) => {
+                    expo.get_base()
+                        .calc_pos(position, State::Same(pos_y, pos_x));
+                    pos_y += expo.get_base().get_above_height();
+                    pos_x += expo.get_base().get_length();
+                    expo.get_exponent()
+                        .calc_pos(position, State::Over(pos_y, pos_x));
+                }
+                State::Under(mut pos_y, mut pos_x) => {
+                    pos_y -= expo.get_exponent().get_height() - 1  + expo.get_base().get_above_height();
+                    expo.get_base()
+                        .calc_pos(position, State::Same(pos_y, pos_x));
+                    pos_x += expo.get_base().get_length();
+                    expo.get_exponent()
+                        .calc_pos(position, State::Over(pos_y + expo.get_base().get_above_height(), pos_x));
+                }
+            },
             Expression::Fraction(frac) => {
-                frac.get_numerator().print_console(depth + 1);
-                println!("bar {depth}");
-                frac.get_denominator().print_console(depth - 1);
+                let (pos_y, mut pos_x) = match prev_state {
+                    State::Over(pos_y, pos_x) => {
+                        (pos_y + frac.get_denominator().get_height(), pos_x)
+                    }
+                    State::Under(pos_y, pos_x) => {
+                        (pos_y - frac.get_numerator().get_height(), pos_x)
+                    }
+                    State::Same(pos_y, pos_x) => (pos_y, pos_x),
+                };
+
+                // # is the sign to put ---- for the fraction bar because / is used for the parenthesis and - is used for the negative sign
+                
+                let num_length = frac.get_numerator().get_length();
+                let denom_length = frac.get_denominator().get_length();
+
+                if denom_length < num_length {
+                    for i in 0..num_length {
+                        position.push(("-".to_string(), (pos_y, pos_x + i)));
+                    }
+                    frac.get_numerator()
+                        .calc_pos(position, State::Over(pos_y + 1, pos_x));
+                    pos_x += (num_length - denom_length) / 2;
+                    frac.get_denominator()
+                        .calc_pos(position, State::Under(pos_y - 1, pos_x));
+                } else {
+                    for i in 0..denom_length {
+                        position.push(("-".to_string(), (pos_y, pos_x + i)));
+                    }
+                    frac.get_denominator()
+                        .calc_pos(position, State::Under(pos_y - 1, pos_x));
+                    pos_x += (denom_length - num_length) / 2;
+                    frac.get_numerator()
+                        .calc_pos(position, State::Over(pos_y + 1, pos_x));
+                }
             }
             Expression::Equality(eq) => {
-                eq.get_left_side().print_console(depth);
-                eq.get_right_side().print_console(depth);
+                let (pos_y, mut pos_x) = prev_state.get_pos();
+                eq.get_left_side().calc_pos(position, prev_state);
+                pos_x += eq.get_left_side().get_length();
+                position.push((" = ".to_string(), (pos_y, pos_x)));
+                pos_x += 3;
+                eq.get_right_side()
+                    .calc_pos(position, State::Same(pos_y, pos_x));
             }
             Expression::Negation(neg) => {
-                println!("- {depth}");
-                neg.sub_expr.print_console(depth);
+                let (pos_y, mut pos_x) = prev_state.get_pos();
+                position.push(("-".to_string(), (pos_y, pos_x)));
+                pos_x += 1;
+                neg.sub_expr.calc_pos(position, State::Same(pos_y, pos_x));
             }
             Expression::Function(func) => {
-                println!("{func} {depth}");
+                let (mut pos_y, mut pos_x) = match prev_state {
+                    State::Over(pos_y, pos_x) => {
+                        (pos_y + self.get_height() - self.get_above_height(), pos_x)
+                    }
+                    State::Under(pos_y, pos_x) => (pos_y - self.get_above_height() + 1, pos_x),
+                    State::Same(pos_y, pos_x) => (pos_y, pos_x),
+                };
+
+                // Modify the position to be at the middle of the function
+                position.push((format!("{}", func.name()), (pos_y, pos_x)));
+                pos_x += func.name().len() as i8;
+
+                self.make_parenthesis(&mut pos_y, &mut pos_x, position, false);
+
+                for (i, arg) in func.args().iter().enumerate() {
+                    if i != 0 {
+                        position.push((", ".to_string(), (pos_y, pos_x)));
+                        pos_x += 2;
+                    }
+                    arg.calc_pos(position, State::Same(pos_y, pos_x));
+                    pos_x += arg.get_length();
+                }
+                self.make_parenthesis(&mut pos_y, &mut pos_x, position, true);
             }
-            Expression::Error => println!("there should be no error in the expression tree"),
+            Expression::Error => {
+                println!("Error");
+            }
+        }
+    }
+
+    fn get_length(&self) -> i8 {
+        match self {
+            Expression::Number(num) => num.to_string().len() as i8,
+            Expression::Variable(var) => var.to_string().len() as i8,
+            Expression::Constant(cons) => cons.as_text().len() as i8,
+            Expression::Addition(add) => {
+                let mut length = 0;
+                for expr in add.sub_expr.iter() {
+                    length += expr.get_length() + 3;
+                }
+                length -= 3;
+                length
+            }
+            Expression::Multiplication(mult) => {
+                let mut length = 0;
+                for expr in mult.sub_expr.iter() {
+                    length += expr.get_length() + 3;
+                }
+                length -= 3;
+                length
+            }
+            Expression::Exponentiation(expo) => {
+                expo.get_base().get_length() + expo.get_exponent().get_length()
+            }
+            Expression::Fraction(frac) => frac
+                .get_numerator()
+                .get_length()
+                .max(frac.get_denominator().get_length()),
+            Expression::Equality(eq) => {
+                eq.get_left_side().get_length() + eq.get_right_side().get_length()
+            }
+            Expression::Negation(neg) => neg.sub_expr.get_length() + 1,
+            Expression::Function(func) => {
+                let mut length = func.name().len() as i8 + 2;
+                for arg in func.args() {
+                    length += arg.get_length() + 2;
+                }
+                length - 2
+            }
+            Expression::Error => {
+                panic!("There should be no error in the expression tree");
+            }
+        }
+    }
+
+    fn get_height(&self) -> i8 {
+        match self {
+            Expression::Number(_) | Expression::Variable(_) | Expression::Constant(_) => 1,
+            Expression::Addition(add) => {
+                let mut max_height = 0;
+                for expr in &add.sub_expr {
+                    max_height = max_height.max(expr.get_height());
+                }
+                max_height
+            }
+            Expression::Multiplication(mult) => {
+                let mut max_height = 0;
+                for expr in &mult.sub_expr {
+                    max_height = max_height.max(expr.get_height());
+                }
+                max_height
+            }
+            Expression::Exponentiation(expo) => {
+                expo.get_base().get_height() + expo.get_exponent().get_height()
+            }
+            Expression::Fraction(frac) => {
+                frac.get_numerator().get_height() + frac.get_denominator().get_height() + 1
+            }
+            Expression::Equality(eq) => eq
+                .get_left_side()
+                .get_height()
+                .max(eq.get_right_side().get_height()),
+            Expression::Negation(neg) => neg.sub_expr.get_height(),
+            Expression::Function(func) => {
+                let mut max_height = 0;
+                for arg in func.args() {
+                    max_height = max_height.max(arg.get_height());
+                }
+                max_height
+            }
+            Expression::Error => {
+                panic!("There should be no error in the expression tree");
+            }
+        }
+    }
+
+    /// Return the height of the expression above the current zero.
+    ///
+    /// Used for parenthesis to know how much to go up
+    fn get_above_height(&self) -> i8 {
+        match self {
+            Expression::Number(_) | Expression::Variable(_) | Expression::Constant(_) => 1,
+            Expression::Addition(add) => {
+                let mut max_height = 0;
+                for expr in &add.sub_expr {
+                    max_height = max_height.max(expr.get_above_height());
+                }
+                max_height
+            }
+            Expression::Multiplication(mult) => {
+                let mut max_height = 0;
+                for expr in &mult.sub_expr {
+                    max_height = max_height.max(expr.get_above_height());
+                }
+                max_height
+            }
+            Expression::Exponentiation(expo) => {
+                expo.get_base().get_above_height() + expo.get_exponent().get_height()
+            }
+            Expression::Fraction(frac) => frac.get_numerator().get_height() + 1,
+            Expression::Equality(eq) => eq
+                .get_left_side()
+                .get_above_height()
+                .max(eq.get_right_side().get_above_height()),
+            Expression::Negation(neg) => neg.sub_expr.get_above_height(),
+            Expression::Function(func) => {
+                let mut max_height = 0;
+                for expr in func.args() {
+                    max_height = max_height.max(expr.get_above_height());
+                }
+                max_height
+            }
+            Expression::Error => panic!("There should be no error in the expression tree"),
+        }
+    }
+
+    /// Allways make the right parenthesis exept if left is true
+    fn make_parenthesis(
+        &self,
+        pos_y: &mut i8,
+        pos_x: &mut i8,
+        position: &mut Vec<(String, (i8, i8))>,
+        left: bool,
+    ) {
+        let height = self.get_height();
+        if height == 1 {
+            if left {
+                position.push((")".to_string(), (*pos_y, *pos_x)));
+            } else {
+                position.push(("(".to_string(), (*pos_y, *pos_x)));
+            }
+            *pos_x += 1;
+        } else {
+            // better to make a single if left ?
+            let mut stage = pos_y.clone() + self.get_above_height() - 1;
+            if left {
+                position.push(("\\".to_string(), (stage, *pos_x)));
+            } else {
+                position.push(("/".to_string(), (stage, *pos_x)));
+            }
+            stage -= 1;
+
+            for _ in 0..(height - 2) {
+                position.push(("|".to_string(), (stage, *pos_x)));
+                stage -= 1;
+            }
+
+            if left {
+                position.push(("/".to_string(), (stage, *pos_x)));
+            } else {
+                position.push(("\\".to_string(), (stage, *pos_x)));
+            }
+            *pos_x += 1;
+        }
+    }
+}
+
+#[derive(PartialEq, Debug, Clone, Copy)]
+pub enum State {
+    Over(i8, i8),
+    Under(i8, i8),
+    Same(i8, i8),
+}
+
+impl State {
+    pub fn get_height(&self) -> i8 {
+        match self {
+            State::Over(num, _) => *num,
+            State::Under(num, _) => *num,
+            State::Same(num, _) => *num,
+        }
+    }
+
+    pub fn get_pos_x(&self) -> i8 {
+        match self {
+            State::Over(_, num) => *num,
+            State::Under(_, num) => *num,
+            State::Same(_, num) => *num,
+        }
+    }
+
+    pub fn get_pos(&self) -> (i8, i8) {
+        match self {
+            State::Over(num1, num2) => (*num1, *num2),
+            State::Under(num1, num2) => (*num1, *num2),
+            State::Same(num1, num2) => (*num1, *num2),
         }
     }
 }
@@ -426,9 +792,18 @@ impl Display for Expression {
                 }
                 Ok(())
             }
-            Expression::Exponentiation(expo) => write!(f, "({})^({})", expo.get_base(), expo.get_exponent()),
-            Expression::Fraction(frac) => write!(f, "({}) / ({})", frac.get_numerator(), frac.get_denominator()),
-            Expression::Equality(eq) => write!(f, "{} = {}", eq.get_left_side(), eq.get_right_side()),
+            Expression::Exponentiation(expo) => {
+                write!(f, "({})^({})", expo.get_base(), expo.get_exponent())
+            }
+            Expression::Fraction(frac) => write!(
+                f,
+                "({}) / ({})",
+                frac.get_numerator(),
+                frac.get_denominator()
+            ),
+            Expression::Equality(eq) => {
+                write!(f, "{} = {}", eq.get_left_side(), eq.get_right_side())
+            }
             Expression::Negation(neg) => write!(f, "-({})", neg.sub_expr),
             Expression::Function(func) => write!(f, "{}", func),
             Expression::Error => write!(f, "Error"),

@@ -74,14 +74,17 @@ fn main() {
                 let mut simplified_expression: Vec<Expression> = Vec::new();
 
                 for statement in result {
+                    // statement.print_tree(None);
+                    // statement.print_console();
+
                     simplified_expression.push(statement.simplify());
                 }
 
                 for statement in simplified_expression {
                     println!("\n");
                     statement.print_tree(None);
-                    println!("{statement}");
-                    statement.print_console(0);
+                    println!("{statement}\n");
+                    statement.print_console();
                 }
             }
         }

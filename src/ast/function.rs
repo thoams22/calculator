@@ -208,10 +208,10 @@ impl FunctionType {
                         if let Expression::Number(num) = expr.get_exponent() {
                             if let Expression::Number(root_num) = args[1] {
                                 if num % root_num == 0 {
-                                        return Expression::function(FunctionType::Predefined(
-                                            PredefinedFunction::Abs,
-                                            vec![expr.get_base()],
-                                        ));
+                                    return Expression::function(FunctionType::Predefined(
+                                        PredefinedFunction::Abs,
+                                        vec![expr.get_base()],
+                                    ));
                                 }
                             }
                         }
@@ -271,20 +271,28 @@ impl FunctionType {
 impl Display for FunctionType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            FunctionType::Predefined(fun, args) => {
+            FunctionType::Predefined(fun, _) => {
                 write!(f, "{fun}(")?;
-                for arg in args {
-                    write!(f, "{arg}, ")?;
+                for (i, arg) in self.args().iter().enumerate() {
+                    if i == 0 {
+                        write!(f, "{arg}")?;
+                    } else {
+                        write!(f, ", {arg}")?;
+                    }
                 }
                 write!(f, ")")
-            },
-            FunctionType::UserDefined(fun, args) => {
+            }
+            FunctionType::UserDefined(fun, _) => {
                 write!(f, "{fun}(")?;
-                for arg in args {
-                    write!(f, "{arg}, ")?;
+                for (i, arg) in self.args().iter().enumerate() {
+                    if i == 0 {
+                        write!(f, "{arg}")?;
+                    } else {
+                        write!(f, ", {arg}")?;
+                    }
                 }
                 write!(f, ")")
-            },
+            }
         }
     }
 }
