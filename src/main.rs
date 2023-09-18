@@ -5,7 +5,6 @@
 
 // Systeme équation
 // Polynome
-// Solve for a var
 // How to make derivate and integral
 // Differential equations
 // Complex numbers
@@ -16,52 +15,84 @@
 // base conversion
 // boolean algebra
 // factorial => Gamma function
+// matrix
 
-// be aware that for the constant like 'e' or 'pi' if they are at the end of a suite of character
-// they will be reconize but if they are at the begining they will not
-// "api" => a*p*i, "pia" => cst(pi)*a, "eln(e)" => e*ln(cst(e)), "ln(e)e" => ln(cst(e))*cst(e)
+
 use std::io;
 
-use crate::tokenizer::tokenization;
+use crate::{parser::Parser, ast::Expression};
 
-
-mod expression;
-mod tokenizer;
+mod diagnostic;
 mod lexer;
 mod parser;
+mod ast;
+mod solver;
 
 fn main() {
-    println!("Please input the expression to evaluate");
-
     let mut expression = String::new();
 
     io::stdin()
         .read_line(&mut expression)
         .expect("Failed to read line");
+    expression = expression.trim_end().to_string();
 
-    print!("Row Input: {expression}");
+    while expression != *"exit" {
+        let mut parser = Parser::new(&expression);
 
-    // println!("Parsed: {:?}", expression.chars());
+        // println!("\nTokens Lexed\n");
+        // for token in parser.get_tokens() {
+        //     print!("{token}");
+        // }
+        // println!();
 
-    let tokenized = tokenization(&expression);
+        if !parser.get_diagnostic_message().is_empty() {
+            println!("\n***LEXER ERROR***\n");
 
-    match tokenized {
-        (Ok(tokens), history) => {
-            println!("Expression evaluated : {:?}", tokens.to_string());
-            // println!("history of tokenization {:?}", history);
-            // println!("Evaluated form {:?}", tokens);
-            let simplified = tokens.simplify();
-            println!("Simplified version is : {:?}", simplified.to_string());
+            for diag in parser.get_diagnostic_message() {
+                println!("{}", diag);
+            }
+            println!("\n***END OF ERROR***");
+            println!();
+        } else {
+            let result = parser.parse();
 
-            let evaluated = simplified.evaluate();
-            match evaluated {
-                Ok(result) => println!("Result is : {}", result),
-                Err(error) => println!("Error in Evaluation : {:?},\nHistory {:?}", error, history),
+            // for statement in &result {
+            //     println!("\n");
+            //     statement.print_tree(None);
+            // }
+
+            if !parser.get_diagnostic_message().is_empty() {
+                println!("\n*** PARSER ERROR***\n");
+
+                for diag in parser.get_diagnostic_message() {
+                    println!("{}", diag);
+                }
+                println!("\n***END OF ERROR***");
+                println!();
+            } else {
+
+                let mut simplified_expression: Vec<Expression> = Vec::new();
+
+                for statement in result {
+                    // statement.print_tree(None);
+                    // statement.print_console();
+
+                    simplified_expression.push(statement.simplify());
+                }
+
+                for statement in simplified_expression {
+                    println!("\n");
+                    statement.print_tree(None);
+                    println!("{statement}\n");
+                    statement.print_console();
+                }
             }
         }
-        (Err(error), history) => println!(
-            "Error in tokenization : {:?},\n history {:?}",
-            error, history
-        ),
+
+        expression.clear();
+        io::stdin()
+            .read_line(&mut expression)
+            .expect("Failed to read line");
+        expression = expression.trim_end().to_string();
     }
 }

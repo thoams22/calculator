@@ -1,7 +1,4 @@
-use super::addition::Addition;
-use super::Expression;
-
-use super::multiplication::Multiplication;
+use super::{addition::Addition, multiplication::Multiplication, Expression};
 
 pub fn pascal_triangle(num: i64) {
     let mut coefficient_list: Vec<i64> = Vec::new();
@@ -33,7 +30,7 @@ fn multinomial_coefficient(n: i64, k: &[i64]) -> i64 {
 /// (a_0 + a_1 + ... + a_m)^n -> developped form
 pub fn multinomial_expansion(n: i64, sum: Addition) -> Expression {
     let mut expantion: Addition = Addition::from_vec(Vec::new());
-    let m = sum.len();
+    let m = sum.sub_expr.len();
     let exponent_permutations: Vec<Vec<i64>> = find_permutations_with_sum(m, n);
     let mut already_calc_coef: Vec<(Vec<i64>, i64)> = Vec::new();
 
@@ -61,16 +58,18 @@ pub fn multinomial_expansion(n: i64, sum: Addition) -> Expression {
             already_calc_coef.push((sorted_exponent_permutations, coeff));
         }
 
-        mult.push(Expression::Number(coeff as f64));
+        mult.sub_expr.push(Expression::Number(coeff));
 
         // Make a multiplication of all a_m to the power stored in exponent_permutation
         for (j, _) in exponent_permutation.iter().enumerate().take(m) {
-            mult.push(Expression::exponentiation(
-                sum.get(j).unwrap().clone(),
-                Expression::Number(exponent_permutation[j] as f64),
+            mult.sub_expr.push(Expression::exponentiation(
+                sum.sub_expr[j].clone(),
+                Expression::Number(exponent_permutation[j]),
             ));
         }
-        expantion.push(Expression::Multiplication(Box::new(mult)));
+        expantion
+            .sub_expr
+            .push(Expression::Multiplication(Box::new(mult)));
     }
     expantion.simplify()
 }
@@ -110,51 +109,137 @@ fn find_permutations_with_sum(m: usize, n: i64) -> Vec<Vec<i64>> {
     result
 }
 
-/// Return `Some((root, exponent))` if n is a perfect power, else `None`.
-/// 
-/// If `is_perfect_power(n)` `n <= 1.0` return None 
-/// 
-/// ### Exemple 
+/// Return `Some((root, exponent))` if n is a perfect power.
+///
+/// If `is_perfect_power(n)` `n <= 1` return None
+///
+/// ### Exemple
 /// ```
-/// let result = is_perfect_power(8.0);
-/// assert_eq!(Some((2.0, 3)), result);
+/// let result = is_perfect_power(8);
+/// assert_eq!(Some((2, 3)), result);
 /// ```
-pub fn is_perfect_power(n: &f64) -> Option<(f64, u32)> {
-    if n <= &1.0 {
+pub fn is_perfect_power(n: &i64) -> Option<(i64, u32)> {
+    if n <= &1 {
         return None;
     }
 
-    let max_exponent = (n).log2().ceil() as u32;
-    let mut min_root: Option<(f64, u32)> = None;
+    let max_exponent = (n).ilog2();
+    let mut min_root: Option<(i64, u32)> = None;
 
     for exponent in 2..=max_exponent {
-        let root = n.powf(1.0 / exponent as f64).round();
-        if root.powf(exponent as f64) == *n && (min_root.is_none() || root < min_root.unwrap().0) {
-                min_root = Some((root, exponent));
-            }
-        
+        let root = (*n as f64).powf(1.0 / exponent as f64).round() as i64;
+        if root.pow(exponent) == *n && (min_root.is_none() || root < min_root.unwrap().0) {
+            min_root = Some((root, exponent));
+        }
     }
 
     min_root
 }
 
+/// Return `(numerator, denominator)` if the number is representable in a i64 fraction.
+///
+/// ### Exemple
+/// ```
+/// let fraction = f64_to_fraction(2.5f64);
+/// assert_eq!((5, 2), result);
+/// ```
+fn f64_to_fraction(number: f64) -> (i64, i64) {
+    let mut n: u32 = 0;
+    let mut numerator: f64 = number;
+    while numerator.fract() > 1e-10 {
+        numerator *= 10.0;
+        n += 1;
+    }
+    let gcd = gcd(numerator.trunc() as i64, 10_i64.pow(n));
+    ((numerator / gcd as f64) as i64, 10_i64.pow(n) / gcd)
+}
+
+/// Return the greatest common divisor of first and second.
+pub fn gcd(mut first: i64, mut second: i64) -> i64 {
+    while second != 0 {
+        let r = first % second;
+        first = second;
+        second = r;
+    }
+    first
+}
+
+/// Return all divisor of n
 pub fn find_divisors(n: u64) -> Vec<u64> {
     let mut divisors = Vec::new();
     let mut last_divisor: u64 = u64::MAX;
-    
+
     for i in 1..=n {
         if n % i == 0 {
             if i >= last_divisor {
                 break;
             }
-            last_divisor = n/i;
-            divisors.insert(divisors.len()/2,last_divisor);
+            last_divisor = n / i;
+            divisors.insert(divisors.len() / 2, last_divisor);
             if i == last_divisor {
                 break;
             }
-            divisors.insert(divisors.len()/2,i);
+            divisors.insert(divisors.len() / 2, i);
         }
     }
 
     divisors
 }
+
+pub fn prime_factor(mut n: i64) -> Vec<(i64, i64)> {
+    if n == 1 {
+        return vec![(1, 1)];
+    }
+    let mut factor: Vec<(i64, i64)> = Vec::new();
+    while n % 2 == 0 {
+        if factor.is_empty() {
+            factor.push((2, 1));
+        } else {
+            factor[0].1 += 1;
+        }
+        n = n/2;
+    }
+
+    for i in 3..=((n as f64).sqrt().round() as i64) {
+        while n % i == 0 {
+            if factor.last().unwrap_or(&(0, 0)).0 != i {
+                factor.push((i, 1));
+            } else {
+                let len = factor.len();
+                factor[len - 1].1 += 1;
+            }
+            n /= i;
+        }
+    }
+
+    if n > 2 {
+        factor.push((n, 1));
+    }
+
+    factor
+}
+
+// fn polynomials_division() {
+//     // x^3 - 27
+//     // /
+//     // x^2 + 3x + 9
+
+//     // (x^3 - 27) / (x^2 + 3x + 9) = x - 3
+
+//     let numerator = Expression::addition(
+//         Expression::exponentiation(
+//             Expression::Variable('x'), Expression::Number(3)), Expression::Number(-27));
+//     let denominator = Expression::addition(
+//         Expression::addition(
+//             Expression::exponentiation(
+//                 Expression::Variable('x'), Expression::Number(2)),
+//             Expression::multiplication(
+//                 Expression::Variable('x'), Expression::Number(3))),
+//         Expression::Number(9));
+    
+//     let result = Addition::from_vec(Vec::new());
+     
+//     for i in 0..50 {
+        
+//     }
+// }
