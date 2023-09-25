@@ -110,7 +110,11 @@ impl Parser {
                 self.next_token();
                 let equal = self.parse_expression();
                 ast.push(Expression::equality(expr, equal));
-            } else {
+            } else if self.current_token().kind == TokenKind::Comma {
+                self.next_token();
+                let variable = self.parse_expression();
+                println!("{}, {}", expr, variable);
+            }else {
                 ast.push(expr);
             }
         }

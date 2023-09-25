@@ -7,7 +7,6 @@ pub(crate) mod math;
 pub mod multiplication;
 pub mod negation;
 
-use core::num;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
@@ -22,6 +21,7 @@ use self::negation::Negation;
 #[derive(PartialEq, Debug, Clone)]
 pub enum Expression {
     Number(i64),
+    // Complex(Box<Complex>)
     Variable(char),
     Constant(ConstantKind),
     Addition(Box<Addition>),
@@ -33,6 +33,10 @@ pub enum Expression {
     Function(Box<FunctionType>),
     Error,
 }
+
+// TODO
+// Add a solve for Expression for x + a = 5, x ??
+// Add a sys eq for x + y = 2, x - y = 3 ??
 
 // Helper constructor
 impl Expression {
@@ -148,7 +152,7 @@ impl Expression {
         }
     }
 
-    pub fn contain_var(&self) -> Option<HashMap<char, usize>> {
+    pub fn contain_vars(&self) -> Option<HashMap<char, usize>> {
         match self {
             Expression::Number(_) => None,
             Expression::Variable(var) => {
@@ -160,7 +164,7 @@ impl Expression {
             Expression::Addition(add) => {
                 let mut map: HashMap<char, usize> = HashMap::new();
                 for expr in add.sub_expr.iter() {
-                    if let Some(mut sub_map) = expr.contain_var() {
+                    if let Some(mut sub_map) = expr.contain_vars() {
                         for (key, value) in sub_map.iter_mut() {
                             if let Some(occurence) = map.get_mut(key) {
                                 *occurence += *value;
@@ -179,7 +183,7 @@ impl Expression {
             Expression::Multiplication(mult) => {
                 let mut map: HashMap<char, usize> = HashMap::new();
                 for expr in mult.sub_expr.iter() {
-                    if let Some(mut sub_map) = expr.contain_var() {
+                    if let Some(mut sub_map) = expr.contain_vars() {
                         for (key, value) in sub_map.iter_mut() {
                             if let Some(occurence) = map.get_mut(key) {
                                 *occurence += *value;
@@ -198,7 +202,7 @@ impl Expression {
             Expression::Exponentiation(expo) => {
                 let mut map: HashMap<char, usize> = HashMap::new();
                 for expr in expo.sub_expr.iter() {
-                    if let Some(mut sub_map) = expr.contain_var() {
+                    if let Some(mut sub_map) = expr.contain_vars() {
                         for (key, value) in sub_map.iter_mut() {
                             if let Some(occurence) = map.get_mut(key) {
                                 *occurence += *value;
@@ -217,7 +221,7 @@ impl Expression {
             Expression::Fraction(frac) => {
                 let mut map: HashMap<char, usize> = HashMap::new();
                 for expr in frac.sub_expr.iter() {
-                    if let Some(mut sub_map) = expr.contain_var() {
+                    if let Some(mut sub_map) = expr.contain_vars() {
                         for (key, value) in sub_map.iter_mut() {
                             if let Some(occurence) = map.get_mut(key) {
                                 *occurence += *value;
@@ -236,7 +240,7 @@ impl Expression {
             Expression::Equality(eq) => {
                 let mut map: HashMap<char, usize> = HashMap::new();
                 for expr in eq.sub_expr.iter() {
-                    if let Some(mut sub_map) = expr.contain_var() {
+                    if let Some(mut sub_map) = expr.contain_vars() {
                         for (key, value) in sub_map.iter_mut() {
                             if let Some(occurence) = map.get_mut(key) {
                                 *occurence += *value;
@@ -254,7 +258,7 @@ impl Expression {
             }
             Expression::Negation(neg) => {
                 let mut map: HashMap<char, usize> = HashMap::new();
-                if let Some(mut sub_map) = neg.sub_expr.contain_var() {
+                if let Some(mut sub_map) = neg.sub_expr.contain_vars() {
                     for (key, value) in sub_map.iter_mut() {
                         if let Some(occurence) = map.get_mut(key) {
                             *occurence += *value;
@@ -274,7 +278,7 @@ impl Expression {
                 FunctionType::Predefined(_, args) | FunctionType::UserDefined(_, args) => {
                     let mut map: HashMap<char, usize> = HashMap::new();
                     for expr in args.iter() {
-                        if let Some(mut sub_map) = expr.contain_var() {
+                        if let Some(mut sub_map) = expr.contain_vars() {
                             for (key, value) in sub_map.iter_mut() {
                                 if let Some(occurence) = map.get_mut(key) {
                                     *occurence += *value;
@@ -294,6 +298,59 @@ impl Expression {
             Expression::Error => panic!("There should be no error in the expression tree"),
         }
     }
+
+    pub fn contain_var(&self, variable: char) -> bool {
+        match self {
+            Expression::Number(_) => false,
+            Expression::Variable(var) => {
+                if var == &variable {
+                    true
+                } else {
+                    false
+                }
+            }
+            Expression::Constant(_) => false,
+            Expression::Addition(add) => {
+                add.sub_expr.iter().any(|expr| {
+                    expr.contain_var(variable)
+                })
+            }
+            Expression::Multiplication(mult) => {
+                mult.sub_expr.iter().any(|expr| {
+                    expr.contain_var(variable)
+                })
+            }
+            Expression::Exponentiation(expo) => {
+                expo.sub_expr.iter().any(|expr| {
+                    expr.contain_var(variable)
+                })
+            }
+            Expression::Fraction(frac) => {
+                frac.sub_expr.iter().any(|expr| {
+                    expr.contain_var(variable)
+                })
+            }
+            Expression::Equality(eq) => {
+                eq.sub_expr.iter().any(|expr| {
+                    expr.contain_var(variable)
+                })
+            }
+            Expression::Negation(neg) => {
+                neg.sub_expr.contain_var(variable)
+                
+            }
+            Expression::Function(func) => match *func.clone() {
+                FunctionType::Predefined(_, args) | FunctionType::UserDefined(_, args) => {
+                    args.iter().any(|expr| {
+                        expr.contain_var(variable)
+                    })
+                }
+            },
+            Expression::Error => panic!("There should be no error in the expression tree"),
+        }
+    }
+
+
 }
 
 // Print functions
@@ -378,7 +435,6 @@ impl Expression {
         // Print the grid
         let mut skip = 0;
         for y in (min_y..=max_y).rev() {
-            let mut prev_char: &String = &"".to_string();
             for x in min_x..=max_x {
                 if skip > 0 {
                     skip -= 1;
@@ -472,12 +528,15 @@ impl Expression {
                         .calc_pos(position, State::Over(pos_y, pos_x));
                 }
                 State::Under(mut pos_y, mut pos_x) => {
-                    pos_y -= expo.get_exponent().get_height() - 1  + expo.get_base().get_above_height();
+                    pos_y -=
+                        expo.get_exponent().get_height() - 1 + expo.get_base().get_above_height();
                     expo.get_base()
                         .calc_pos(position, State::Same(pos_y, pos_x));
                     pos_x += expo.get_base().get_length();
-                    expo.get_exponent()
-                        .calc_pos(position, State::Over(pos_y + expo.get_base().get_above_height(), pos_x));
+                    expo.get_exponent().calc_pos(
+                        position,
+                        State::Over(pos_y + expo.get_base().get_above_height(), pos_x),
+                    );
                 }
             },
             Expression::Fraction(frac) => {
@@ -491,8 +550,6 @@ impl Expression {
                     State::Same(pos_y, pos_x) => (pos_y, pos_x),
                 };
 
-                // # is the sign to put ---- for the fraction bar because / is used for the parenthesis and - is used for the negative sign
-                
                 let num_length = frac.get_numerator().get_length();
                 let denom_length = frac.get_denominator().get_length();
 
@@ -541,7 +598,7 @@ impl Expression {
                 };
 
                 // Modify the position to be at the middle of the function
-                position.push((format!("{}", func.name()), (pos_y, pos_x)));
+                position.push((func.name(), (pos_y, pos_x)));
                 pos_x += func.name().len() as i8;
 
                 self.make_parenthesis(&mut pos_y, &mut pos_x, position, false);
@@ -688,7 +745,7 @@ impl Expression {
         }
     }
 
-    /// Allways make the right parenthesis exept if left is true
+    /// Allways make the right parenthesis except if left is true
     fn make_parenthesis(
         &self,
         pos_y: &mut i8,
@@ -706,7 +763,7 @@ impl Expression {
             *pos_x += 1;
         } else {
             // better to make a single if left ?
-            let mut stage = pos_y.clone() + self.get_above_height() - 1;
+            let mut stage = *pos_y + self.get_above_height() - 1;
             if left {
                 position.push(("\\".to_string(), (stage, *pos_x)));
             } else {
@@ -1023,16 +1080,39 @@ mod test_simplify {
             )),
         )
         .simplify()
-        .equal(&Expression::addition(
+        .equal(&Expression::function(FunctionType::Predefined(
+            PredefinedFunction::Ln,
+            vec![Expression::multiplication(
+                Expression::Variable('x'),
+                Expression::Variable('y')
+            )]
+        ))));
+
+        // 2ln(x) + ln(x+1)
+        assert!(Expression::addition(
+            Expression::multiplication(
+                Expression::Number(2),
+                Expression::function(FunctionType::Predefined(
+                    PredefinedFunction::Ln,
+                    vec![Expression::Variable('x')]
+                ))
+            ),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Ln,
-                vec![Expression::Variable('x')]
+                vec![Expression::addition(
+                    Expression::Variable('x'),
+                    Expression::Number(1)
+                )]
             )),
-            Expression::function(FunctionType::Predefined(
-                PredefinedFunction::Ln,
-                vec![Expression::Variable('y')]
-            )),
-        )));
+        )
+        .simplify()
+        .equal(&Expression::function(FunctionType::Predefined(
+            PredefinedFunction::Ln,
+            vec![Expression::addition(
+                Expression::exponentiation(Expression::Variable('x'), Expression::Number(3)),
+                Expression::exponentiation(Expression::Variable('x'), Expression::Number(2)),
+            )]
+        ))));
 
         // ln(x) + ln(x)
         assert!(Expression::addition(
@@ -1053,6 +1133,30 @@ mod test_simplify {
                 vec![Expression::Variable('x'),]
             ))
         )));
+
+        // 2ln(x) + ln(x)
+        assert!(Expression::addition(
+            Expression::multiplication(
+                Expression::Number(2),
+                Expression::function(FunctionType::Predefined(
+                    PredefinedFunction::Ln,
+                    vec![Expression::Variable('x')]
+                ))
+            ),
+            Expression::function(FunctionType::Predefined(
+                PredefinedFunction::Ln,
+                vec![Expression::Variable('x')]
+            )),
+        )
+        .simplify()
+        .equal(&Expression::multiplication(
+            Expression::Number(3),
+            Expression::function(FunctionType::Predefined(
+                PredefinedFunction::Ln,
+                vec![Expression::Variable('x'),]
+            ))
+        )));
+        
 
         // a(f) + a(f)
         assert!(Expression::addition(

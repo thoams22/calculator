@@ -1,10 +1,8 @@
-use core::num;
-
 use crate::ast::Expression;
 
 use super::{
     addition::Addition,
-    math::{gcd, prime_factor},
+    math::{gcd, extract_coefficient_expression_exponent, PrimeFactor, ExpressionExponent},
     multiplication::Multiplication,
 };
 
@@ -96,30 +94,30 @@ impl Fraction {
                 Expression::fraction(Expression::negation(expr), expr_2.sub_expr).simplify()
             }
             (num, denom) => {
-                let commons_num: (Vec<(i64, Expression)>, Vec<(Expression, Expression)>) =
+                let commons_num: (Vec<PrimeFactor>, Vec<ExpressionExponent>) =
                     Self::factorise(num.clone());
-                if commons_num != (vec![(1, Expression::Number(1))], vec![])
+                if commons_num != (vec![PrimeFactor::new(1, Expression::Number(1))], vec![])
                     || commons_num != (vec![], vec![])
                 {
-                    let commons_denom: (Vec<(i64, Expression)>, Vec<(Expression, Expression)>) =
+                    let commons_denom: (Vec<PrimeFactor>, Vec<ExpressionExponent>) =
                         Self::factorise(denom.clone());
-                    if commons_denom != (vec![(1, Expression::Number(1))], vec![])
+                    if commons_denom != (vec![PrimeFactor::new(1, Expression::Number(1))], vec![])
                         || commons_denom != (vec![], vec![])
                     {
-                        let commons: (Vec<(i64, Expression)>, Vec<(Expression, Expression)>) = (
+                        let commons: (Vec<PrimeFactor>, Vec<ExpressionExponent>) = (
                             commons_num
                                 .0
                                 .iter()
-                                .filter_map(|(prime, expo)| {
+                                .filter_map(|prime_factor| {
                                     commons_denom
                                         .0
                                         .iter()
-                                        .position(|(prime_2, expo_2)| {
-                                            if prime == prime_2 {
-                                                match (expo, expo_2) {
+                                        .position(|prime_factor_2| {
+                                            if prime_factor.prime == prime_factor_2.prime {
+                                                match (&prime_factor.exponent, &prime_factor_2.exponent) {
                                                     (Expression::Number(_), _) => true,
                                                     (_, Expression::Number(_)) => true,
-                                                    _ => expo.equal(expo_2),
+                                                    _ => prime_factor.exponent.equal(&prime_factor.exponent),
                                                 }
                                             } else {
                                                 false
@@ -130,37 +128,37 @@ impl Fraction {
                                                 Expression::Number(num),
                                                 Expression::Number(num_2),
                                             ) =
-                                                (expo, commons_denom.0[pos].1.clone())
+                                                (&prime_factor.exponent, &commons_denom.0[pos].exponent)
                                             {
-                                                Expression::Number(*num.min(&num_2))
+                                                Expression::Number(*num.min(num_2))
                                             } else if let (_, Expression::Number(num_2)) =
-                                                (expo, commons_denom.0[pos].1.clone())
+                                                (&prime_factor.exponent, &commons_denom.0[pos].exponent)
                                             {
-                                                Expression::Number(num_2)
+                                                Expression::Number(*num_2)
                                             } else if let (Expression::Number(num), _) =
-                                                (expo, commons_denom.0[pos].1.clone())
+                                                (&prime_factor.exponent, &commons_denom.0[pos].exponent)
                                             {
                                                 Expression::Number(*num)
                                             } else {
-                                                expo.clone()
+                                                prime_factor.exponent.clone()
                                             };
-                                            (*prime, exponenent)
+                                            PrimeFactor::new(prime_factor.prime, exponenent)
                                         })
                                 })
                                 .collect(),
                             commons_num
                                 .1
                                 .iter()
-                                .filter_map(|(prime, expo)| {
+                                .filter_map(|expr| {
                                     commons_denom
                                         .1
                                         .iter()
-                                        .position(|(prime_2, expo_2)| {
-                                            if prime == prime_2 {
-                                                match (expo, expo_2) {
+                                        .position(|expr_2| {
+                                            if expr.expression == expr_2.expression {
+                                                match (&expr.exponent, &expr_2.exponent) {
                                                     (Expression::Number(_), _) => true,
                                                     (_, Expression::Number(_)) => true,
-                                                    _ => expo.equal(expo_2),
+                                                    _ => expr.exponent.equal(&expr_2.exponent),
                                                 }
                                             } else {
                                                 false
@@ -171,27 +169,27 @@ impl Fraction {
                                                 Expression::Number(num),
                                                 Expression::Number(num_2),
                                             ) =
-                                                (expo, commons_denom.1[pos].1.clone())
+                                                (&expr.exponent, &commons_denom.1[pos].exponent)
                                             {
-                                                Expression::Number(*num.min(&num_2))
+                                                Expression::Number(*num.min(num_2))
                                             } else if let (_, Expression::Number(num_2)) =
-                                                (expo, commons_denom.1[pos].1.clone())
+                                                (&expr.exponent, &commons_denom.1[pos].exponent)
                                             {
-                                                Expression::Number(num_2)
+                                                Expression::Number(*num_2)
                                             } else if let (Expression::Number(num), _) =
-                                                (expo, commons_denom.1[pos].1.clone())
+                                                (&expr.exponent, &commons_denom.1[pos].exponent)
                                             {
                                                 Expression::Number(*num)
                                             } else {
-                                                expo.clone()
+                                                expr.exponent.clone()
                                             };
-                                            (prime.clone(), exponenent)
+                                            ExpressionExponent::new(expr.expression.clone(), exponenent)
                                         })
                                 })
                                 .collect(),
                         );
 
-                        if commons == (vec![(1, Expression::Number(1))], vec![])
+                        if commons == (vec![PrimeFactor::new(1, Expression::Number(1))], vec![])
                             || commons == (vec![], vec![])
                         {
                             return Expression::Fraction(Box::new(self));
@@ -211,21 +209,21 @@ impl Fraction {
 
     fn delete_commons(
         expr: Expression,
-        commons: (Vec<(i64, Expression)>, Vec<(Expression, Expression)>),
+        commons: (Vec<PrimeFactor>, Vec<ExpressionExponent>),
     ) -> Expression {
         match expr {
             Expression::Number(mut num) => {
-                commons.0.iter().for_each(|(prime, expo)| {
-                    if let Expression::Number(num_expo) = expo {
-                        num /= prime.pow(*num_expo as u32);
+                commons.0.iter().for_each(|prime_factor| {
+                    if let Expression::Number(num_expo) = prime_factor.exponent {
+                        num /= prime_factor.prime.pow(num_expo as u32);
                     }
                 });
                 Expression::Number(num)
             }
             Expression::Variable(_) => {
-                if commons.1.iter().any(|(expr_comm, expo)| {
-                    if expr == *expr_comm {
-                        matches!(expo, Expression::Number(1))
+                if commons.1.iter().any(|expression_exponent| {
+                    if expr == expression_exponent.expression {
+                        matches!(expression_exponent.exponent, Expression::Number(1))
                     } else {
                         false
                     }
@@ -236,9 +234,9 @@ impl Fraction {
                 }
             }
             Expression::Constant(_) => {
-                if commons.1.iter().any(|(expr_comm, expo)| {
-                    if expr == *expr_comm {
-                        matches!(expo, Expression::Number(1))
+                if commons.1.iter().any(|expression_exponent| {
+                    if expr == expression_exponent.expression {
+                        matches!(expression_exponent.exponent, Expression::Number(1))
                     } else {
                         false
                     }
@@ -268,9 +266,9 @@ impl Fraction {
             }
             Expression::Exponentiation(expo) => {
                 let mut exponenent: Expression = Expression::Number(-1);
-                if commons.1.iter().any(|(expr_comm, expo_com)| {
-                    if expo.get_base() == *expr_comm {
-                        exponenent = expo_com.clone();
+                if commons.1.iter().any(|expression_exponent| {
+                    if expo.get_base() == expression_exponent.expression {
+                        exponenent = expression_exponent.exponent.clone();
                         true
                     } else {
                         false
@@ -282,9 +280,9 @@ impl Fraction {
                     )
                     .simplify()
                 } else if let Expression::Number(num) = expo.get_base() {
-                    if commons.0.iter().any(|(expr_comm, expo_com)| {
-                        if num == *expr_comm {
-                            exponenent = expo_com.clone();
+                    if commons.0.iter().any(|prime_factor| {
+                        if num == prime_factor.prime {
+                            exponenent = prime_factor.exponent.clone();
                             true
                         } else {
                             false
@@ -309,9 +307,9 @@ impl Fraction {
                 Expression::negation(Self::delete_commons(neg.sub_expr, commons))
             }
             Expression::Function(_) => {
-                if commons.1.iter().any(|(expr_comm, expo)| {
-                    if expr == *expr_comm {
-                        matches!(expo, Expression::Number(1))
+                if commons.1.iter().any(|expression_exponent| {
+                    if expr == expression_exponent.expression {
+                        matches!(expression_exponent.exponent, Expression::Number(1))
                     } else {
                         false
                     }
@@ -326,31 +324,31 @@ impl Fraction {
     }
 
     /// `expr` must be simplified
-    fn factorise(expr: Expression) -> (Vec<(i64, Expression)>, Vec<(Expression, Expression)>) {
+    fn factorise(expr: Expression) -> (Vec<PrimeFactor>, Vec<ExpressionExponent>) {
         match expr {
             Expression::Addition(add) => {
-                let mut components: Vec<(Vec<(i64, Expression)>, Vec<(Expression, Expression)>)> =
+                let mut components: Vec<(Vec<PrimeFactor>, Vec<ExpressionExponent>)> =
                     Vec::new();
                 for sub_expr in add.sub_expr {
-                    components.push(Fraction::extract_coefficient_expression_exponent(sub_expr));
+                    components.push(extract_coefficient_expression_exponent(sub_expr));
                 }
 
-                let mut commons: (Vec<(i64, Expression)>, Vec<(Expression, Expression)>) =
+                let mut commons: (Vec<PrimeFactor>, Vec<ExpressionExponent>) =
                     components[0].clone();
 
                 components.iter().skip(1).for_each(|component| {
                     commons.0 = commons
                         .0
                         .iter()
-                        .filter_map(|(prime, expo)| {
+                        .filter_map(|prime_factor| {
                             component
                                 .0
                                 .iter()
-                                .position(|(prime_2, expo_2)| {
-                                    if prime == prime_2 {
-                                        match (expo, expo_2) {
+                                .position(|prime_factor_2| {
+                                    if prime_factor.prime == prime_factor_2.prime {
+                                        match (&prime_factor.exponent, &prime_factor_2.exponent) {
                                             (Expression::Number(_), Expression::Number(_)) => true,
-                                            _ => expo.equal(expo_2),
+                                            _ => prime_factor.exponent.equal(&prime_factor_2.exponent),
                                         }
                                     } else {
                                         false
@@ -360,28 +358,28 @@ impl Fraction {
                                     let exponenent = if let (
                                         Expression::Number(num),
                                         Expression::Number(num_2),
-                                    ) = (expo, component.0[pos].1.clone())
+                                    ) = (&prime_factor.exponent, &component.0[pos].exponent)
                                     {
-                                        Expression::Number(*num.min(&num_2))
+                                        Expression::Number(*num.min(num_2))
                                     } else {
-                                        expo.clone()
+                                        prime_factor.exponent.clone()
                                     };
-                                    (*prime, exponenent)
+                                    PrimeFactor::new(prime_factor.prime, exponenent)
                                 })
                         })
                         .collect();
                     commons.1 = commons
                         .1
                         .iter()
-                        .filter_map(|(prime, expo)| {
+                        .filter_map(|expr| {
                             component
                                 .1
                                 .iter()
-                                .position(|(prime_2, expo_2)| {
-                                    if prime == prime_2 {
-                                        match (expo, expo_2) {
+                                .position(|expr_2| {
+                                    if expr.expression == expr_2.expression {
+                                        match (&expr.exponent, &expr.exponent) {
                                             (Expression::Number(_), Expression::Number(_)) => true,
-                                            _ => expo.equal(expo_2),
+                                            _ => expr.exponent.equal(&expr.exponent),
                                         }
                                     } else {
                                         false
@@ -391,13 +389,13 @@ impl Fraction {
                                     let exponenent = if let (
                                         Expression::Number(num),
                                         Expression::Number(num_2),
-                                    ) = (expo, component.1[pos].1.clone())
+                                    ) = (&expr.exponent, &component.1[pos].exponent.clone())
                                     {
-                                        Expression::Number(*num.min(&num_2))
+                                        Expression::Number(*num.min(num_2))
                                     } else {
-                                        expo.clone()
+                                        expr.exponent.clone()
                                     };
-                                    (prime.clone(), exponenent)
+                                    ExpressionExponent::new(expr.expression.clone(), exponenent)
                                 })
                         })
                         .collect();
@@ -405,84 +403,10 @@ impl Fraction {
                 commons
             }
             _ => {
-                let (coefficient, expressions) =
-                    Fraction::extract_coefficient_expression_exponent(expr);
-                (coefficient, expressions)
+                let (prime_factor, expressions) =
+                    extract_coefficient_expression_exponent(expr);
+                (prime_factor, expressions)
             }
-        }
-    }
-
-    /// Expression must be simplified
-    pub fn extract_coefficient_expression_exponent(
-        expr: Expression,
-    ) -> (Vec<(i64, Expression)>, Vec<(Expression, Expression)>) {
-        let mut coefficient = 1;
-        let mut expressions: Vec<(Expression, Expression)> = Vec::new();
-        match expr {
-            // 12a^2
-            Expression::Multiplication(mult) => {
-                for i in 0..mult.sub_expr.len() {
-                    match &mult.sub_expr[i] {
-                        // 2
-                        Expression::Number(num) => {
-                            coefficient *= num;
-                        }
-                        // a^2
-                        Expression::Exponentiation(expo) => {
-                            expressions.push((expo.get_base(), expo.get_exponent()));
-                        }
-                        _ => {
-                            expressions.push((mult.sub_expr[i].clone(), Expression::Number(1)));
-                        }
-                    }
-                }
-                (
-                    prime_factor(coefficient)
-                        .iter()
-                        .map(|(prime, expo)| (*prime, Expression::Number(*expo)))
-                        .collect::<Vec<(i64, Expression)>>(),
-                    expressions,
-                )
-            }
-            Expression::Number(num) => (
-                prime_factor(num)
-                    .iter()
-                    .map(|(prime, expo)| (*prime, Expression::Number(*expo)))
-                    .collect::<Vec<(i64, Expression)>>(),
-                expressions,
-            ),
-            Expression::Negation(neg) => {
-                Self::extract_coefficient_expression_exponent(neg.sub_expr)
-            }
-            Expression::Exponentiation(expo) => {
-                let mut coefs: Vec<(i64, Expression)> = vec![(1, Expression::Number(1))];
-                if let Expression::Number(num) = expo.get_base() {
-                    coefficient *= num;
-                    coefs = prime_factor(coefficient)
-                        .iter()
-                        .map(|(prime, exp)| {
-                            (
-                                *prime,
-                                Expression::multiplication(
-                                    Expression::Number(*exp),
-                                    expo.get_exponent(),
-                                )
-                                .simplify(),
-                            )
-                        })
-                        .collect::<Vec<(i64, Expression)>>();
-                } else {
-                    expressions.push((expo.get_base(), expo.get_exponent()));
-                }
-                (coefs, expressions)
-            }
-            _ => (
-                prime_factor(coefficient)
-                    .iter()
-                    .map(|(prime, expo)| (*prime, Expression::Number(*expo)))
-                    .collect::<Vec<(i64, Expression)>>(),
-                vec![(expr, Expression::Number(1))],
-            ),
         }
     }
 }

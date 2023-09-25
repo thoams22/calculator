@@ -197,7 +197,7 @@ pub fn prime_factor(mut n: i64) -> Vec<(i64, i64)> {
         } else {
             factor[0].1 += 1;
         }
-        n = n/2;
+        n /= 2;
     }
 
     for i in 3..=((n as f64).sqrt().round() as i64) {
@@ -236,10 +236,126 @@ pub fn prime_factor(mut n: i64) -> Vec<(i64, i64)> {
 //             Expression::multiplication(
 //                 Expression::Variable('x'), Expression::Number(3))),
 //         Expression::Number(9));
-    
+
 //     let result = Addition::from_vec(Vec::new());
-     
+
 //     for i in 0..50 {
-        
+
 //     }
 // }
+
+/// Expression must be simplified
+pub fn extract_coefficient_expression_exponent(
+    expr: Expression,
+) -> (Vec<PrimeFactor>, Vec<ExpressionExponent>) {
+    let mut coefficient = 1;
+    let mut expressions: Vec<ExpressionExponent> = Vec::new();
+    match expr {
+        // 12a^2
+        Expression::Multiplication(mult) => {
+            for i in 0..mult.sub_expr.len() {
+                match &mult.sub_expr[i] {
+                    // 2
+                    Expression::Number(num) => {
+                        coefficient *= num;
+                    }
+                    // a^2
+                    Expression::Exponentiation(expo) => {
+                        expressions.push(ExpressionExponent::new(
+                            expo.get_base(),
+                            expo.get_exponent(),
+                        ));
+                    }
+                    _ => {
+                        expressions.push(ExpressionExponent::new(
+                            mult.sub_expr[i].clone(),
+                            Expression::Number(1),
+                        ));
+                    }
+                }
+            }
+            (
+                prime_factor(coefficient)
+                    .iter()
+                    .map(|(prime, expo)| PrimeFactor::new(*prime, Expression::Number(*expo)))
+                    .collect::<Vec<PrimeFactor>>(),
+                expressions,
+            )
+        }
+        Expression::Number(num) => (
+            prime_factor(num)
+                .iter()
+                .map(|(prime, expo)| PrimeFactor::new(*prime, Expression::Number(*expo)))
+                .collect::<Vec<PrimeFactor>>(),
+            expressions,
+        ),
+        Expression::Negation(neg) => extract_coefficient_expression_exponent(neg.sub_expr),
+        Expression::Exponentiation(expo) => {
+            let mut coefs: Vec<PrimeFactor> = vec![PrimeFactor::new(1, Expression::Number(1))];
+            if let Expression::Number(num) = expo.get_base() {
+                coefficient *= num;
+                coefs = prime_factor(coefficient)
+                    .iter()
+                    .map(|(prime, exp)| {
+                        PrimeFactor::new(
+                            *prime,
+                            Expression::multiplication(
+                                Expression::Number(*exp),
+                                expo.get_exponent(),
+                            )
+                            .simplify(),
+                        )
+                    })
+                    .collect::<Vec<PrimeFactor>>();
+            } else {
+                expressions.push(ExpressionExponent::new(
+                    expo.get_base(),
+                    expo.get_exponent(),
+                ));
+            }
+            (coefs, expressions)
+        }
+        _ => (
+            prime_factor(coefficient)
+                .iter()
+                .map(|(prime, expo)| PrimeFactor::new(*prime, Expression::Number(*expo)))
+                .collect::<Vec<PrimeFactor>>(),
+            vec![ExpressionExponent::new(expr, Expression::Number(1))],
+        ),
+    }
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub struct PrimeFactor {
+    pub prime: i64,
+    pub exponent: Expression,
+}
+
+impl PrimeFactor {
+    pub fn new(prime: i64, exponent: Expression) -> Self {
+        Self { prime, exponent }
+    }
+
+    pub fn get_all(&self) -> (i64, Expression) {
+        (self.prime, self.exponent.clone())
+    }
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub struct ExpressionExponent {
+    pub expression: Expression,
+    pub exponent: Expression,
+}
+
+impl ExpressionExponent {
+    pub fn new(expression: Expression, exponent: Expression) -> Self {
+        Self {
+            expression,
+            exponent,
+        }
+    }
+
+    pub fn get_all(&self) -> (Expression, Expression) {
+        (self.expression.clone(), self.expression.clone())
+    }
+}

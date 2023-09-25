@@ -17,15 +17,14 @@
 // factorial => Gamma function
 // matrix
 
-
 use std::io;
 
-use crate::{parser::Parser, ast::Expression};
+use crate::{ast::Expression, parser::Parser, solver::solve};
 
+mod ast;
 mod diagnostic;
 mod lexer;
 mod parser;
-mod ast;
 mod solver;
 
 fn main() {
@@ -38,12 +37,6 @@ fn main() {
 
     while expression != *"exit" {
         let mut parser = Parser::new(&expression);
-
-        // println!("\nTokens Lexed\n");
-        // for token in parser.get_tokens() {
-        //     print!("{token}");
-        // }
-        // println!();
 
         if !parser.get_diagnostic_message().is_empty() {
             println!("\n***LEXER ERROR***\n");
@@ -70,21 +63,25 @@ fn main() {
                 println!("\n***END OF ERROR***");
                 println!();
             } else {
-
                 let mut simplified_expression: Vec<Expression> = Vec::new();
 
                 for statement in result {
-                    // statement.print_tree(None);
-                    // statement.print_console();
-
                     simplified_expression.push(statement.simplify());
                 }
 
                 for statement in simplified_expression {
-                    println!("\n");
-                    statement.print_tree(None);
-                    println!("{statement}\n");
+                    // statement.print_tree(None);
                     statement.print_console();
+
+                    let solved = solve(statement, None);
+
+                    println!("\n");
+                    println!("Solved expression:\n");
+                    solved.iter().for_each(|solution| {
+                        // solution.print_tree(None);
+                        println!("\n");
+                        solution.print_console();
+                    });
                 }
             }
         }

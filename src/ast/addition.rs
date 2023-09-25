@@ -1,6 +1,6 @@
 use crate::ast::Expression;
 
-use super::{function::{FunctionType, PredefinedFunction}};
+use super::function::{FunctionType, PredefinedFunction};
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Addition {
@@ -81,7 +81,7 @@ impl Addition {
     fn addition_variable(mut self) -> Addition {
         let mut i = 0;
         while i < self.sub_expr.len() {
-            let (mut coefficient, expr) =
+            let (mut coefficient, mut expr) =
                 Self::extract_coefficient_and_expr(self.sub_expr[i].clone());
 
             let mut simplify: bool = false;
@@ -92,8 +92,12 @@ impl Addition {
 
                 match (expr.clone(), second_expr) {
                     (Expression::Function(f_expr), Expression::Function(f_sec_expr)) => {
-                        if Self::simplify_function(*f_expr, *f_sec_expr).is_some() {
-                            coefficient += second_coefficient;
+                        if let Some(fun) = Self::simplify_function(
+                            (*f_expr, &mut coefficient),
+                            (*f_sec_expr, second_coefficient),
+                        )
+                        {
+                            expr = fun;
                             self.sub_expr.swap_remove(j);
                             simplify = true;
                         } else {
@@ -164,7 +168,11 @@ impl Addition {
         self
     }
 
-    fn simplify_function(func_1: FunctionType, func_2: FunctionType) -> Option<Expression> {
+    // TODO add coeff for logarithme simplification exponent the args before multiply
+    fn simplify_function(
+        (func_1, coeff_1): (FunctionType, &mut i64),
+        (func_2, coeff_2): (FunctionType, i64),
+    ) -> Option<Expression> {
         match (func_1.clone(), func_2.clone()) {
             (
                 FunctionType::Predefined(type_1, args_1),
@@ -176,13 +184,44 @@ impl Addition {
                 | (PredefinedFunction::Atan, PredefinedFunction::Atan)
                 | (PredefinedFunction::Sin, PredefinedFunction::Sin)
                 | (PredefinedFunction::Tan, PredefinedFunction::Tan)
-                | (PredefinedFunction::Cos, PredefinedFunction::Cos)
-                | (PredefinedFunction::Ln, PredefinedFunction::Ln)
-                | (PredefinedFunction::Log, PredefinedFunction::Log) => {
+                | (PredefinedFunction::Cos, PredefinedFunction::Cos) => {
                     if args_1[0].equal(&args_2[0]) {
+                        *coeff_1 += coeff_2;
                         Some(Expression::function(func_1))
                     } else {
                         None
+                    }
+                }
+                (PredefinedFunction::Ln, PredefinedFunction::Ln) => {
+                    if args_1[0].equal(&args_2[0]) {
+                        *coeff_1 += coeff_2;
+                        Some(Expression::function(func_1))
+                    } else {
+                        let coefficient = coeff_1.clone();
+                        *coeff_1 = 1;
+                        Some(Expression::function(FunctionType::Predefined(
+                            PredefinedFunction::Ln,
+                            vec![Expression::multiplication(
+                                Expression::exponentiation(args_1[0].clone(), Expression::Number(coefficient)),
+                                Expression::exponentiation(args_2[0].clone(), Expression::Number(coeff_2)),
+                            )],
+                        )))
+                    }
+                }
+                (PredefinedFunction::Log, PredefinedFunction::Log) => {
+                    if args_1[0].equal(&args_2[0]) {
+                        *coeff_1 += coeff_2;
+                        Some(Expression::function(func_1))
+                    } else {
+                        let coefficient = coeff_1.clone();
+                        *coeff_1 = 1;
+                        Some(Expression::function(FunctionType::Predefined(
+                            PredefinedFunction::Log,
+                            vec![Expression::multiplication(
+                                Expression::exponentiation(args_1[0].clone(), Expression::Number(coefficient)),
+                                Expression::exponentiation(args_2[0].clone(), Expression::Number(coeff_2)),
+                            )],
+                        )))
                     }
                 }
                 (_, _) => None,
@@ -190,6 +229,7 @@ impl Addition {
             (FunctionType::UserDefined(name1, args1), FunctionType::UserDefined(_, _))
                 if func_1.equal(&func_2) =>
             {
+                *coeff_1 += coeff_2;
                 Some(Expression::function(FunctionType::UserDefined(
                     name1, args1,
                 )))
@@ -246,7 +286,8 @@ impl Addition {
     }
 
     pub fn order(mut self) -> Addition {
-        self.sub_expr.sort_by_key(|b| std::cmp::Reverse(b.get_order()));
+        self.sub_expr
+            .sort_by_key(|b| std::cmp::Reverse(b.get_order()));
         self
     }
 }
