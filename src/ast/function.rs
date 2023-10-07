@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter};
 
-use super::{math::is_perfect_power, ConstantKind, Expression};
+use super::{ConstantKind, Expression};
+use crate::utils::is_perfect_power;
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum FunctionType {

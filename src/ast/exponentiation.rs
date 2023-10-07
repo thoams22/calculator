@@ -2,10 +2,11 @@ use crate::ast::Expression;
 
 use super::{
     function::{FunctionType, PredefinedFunction},
-    math::multinomial_expansion,
     multiplication::Multiplication,
     ConstantKind,
 };
+
+use crate::utils::multinomial_expansion;
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Exponentiation {
@@ -119,6 +120,7 @@ impl Exponentiation {
     }
 
     fn simplify_exponent_one_zero(self) -> Expression {
+        // println!("{:?}", self);
         if let Expression::Number(num) = self.get_exponent() {
             if num == 0 {
                 return Expression::Number(1);

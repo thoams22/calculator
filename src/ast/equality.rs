@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::ast::Expression;
 
 #[derive(PartialEq, Debug, Clone)]
@@ -52,7 +54,29 @@ impl Equality {
             (left, right) if left.equal(&right) => {
                 Expression::equality(Expression::Number(0), Expression::Number(0))
             }
-            _ => Expression::Equality(Box::new(self)),
+            (Expression::Negation(neg_1), Expression::Negation(neg_2)) => {
+                Expression::equality(neg_1.sub_expr, neg_2.sub_expr)
+            }
+            (Expression::Negation(neg), Expression::Number(num))
+            | (Expression::Number(num), Expression::Negation(neg))
+                if num < 0 =>
+            {
+                Expression::equality(neg.sub_expr, Expression::Number(num.abs()))
+            }
+            (Expression::Number(num_1), Expression::Number(num_2))
+                if num_1 < 0 &&  num_2 < 0 =>
+            {
+                Expression::equality(Expression::Number(num_1.abs()), Expression::Number(num_2.abs()))
+            }
+            _ => {
+                Expression::Equality(Box::new(self))
+            }
         }
+    }
+}
+
+impl Display for Equality {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} = {}", self.get_left_side(), self.get_right_side())
     }
 }

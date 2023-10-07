@@ -3,7 +3,6 @@ pub mod equality;
 pub mod exponentiation;
 pub mod fraction;
 pub mod function;
-pub(crate) mod math;
 pub mod multiplication;
 pub mod negation;
 
@@ -19,9 +18,52 @@ use self::multiplication::Multiplication;
 use self::negation::Negation;
 
 #[derive(PartialEq, Debug, Clone)]
+pub enum Statement {
+    Simplify(Expression),
+    Solve(Expression),
+    SolveFor(Expression, char),
+    Replace(Expression, Equality),
+    // Systeme(Vec<Equality>),
+    // Derivate(Expression, var), // add degrée ?
+    // Integrale(Expression, var),
+    // Limit(Expression, var),
+    Error,
+}
+
+impl Statement {
+    pub fn print_console(&self) {
+        // TODO modify this to print good SolveFor and Replace
+        match self {
+            Statement::Simplify(expr) => expr.print_console(),
+            Statement::Solve(expr) => expr.print_console(),
+            Statement::SolveFor(expr, var) => {
+                Expression::equality(expr.clone(), Expression::Variable(*var)).print_console()
+            }
+            Statement::Replace(expr, eq) => {
+                Expression::equality(expr.clone(), eq.get_left_side().clone()).print_console()
+            }
+            Statement::Error => panic!("there should'nt be error in the ast"),
+        }
+    }
+}
+
+impl Display for Statement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Statement::Simplify(expr) => write!(f, "{}", expr),
+            Statement::Solve(expr) => write!(f, "{}", expr),
+            Statement::SolveFor(expr, var) => write!(f, "{}, {}", expr, var),
+            Statement::Replace(expr, eq) => write!(f, "{}, {}", expr, eq),
+            Statement::Error => write!(f, "Error"),
+        }
+    }
+}
+
+#[derive(PartialEq, Debug, Clone)]
 pub enum Expression {
     Number(i64),
     // Complex(Box<Complex>)
+    // Infinity,
     Variable(char),
     Constant(ConstantKind),
     Addition(Box<Addition>),
@@ -97,6 +139,22 @@ impl Expression {
             _ => false,
         }
     }
+
+    // pub fn similar(&self, other: &Expression) -> bool {
+    //     match (self, other) {
+    //         (Expression::Number(left), Expression::Number(right)) => true,
+    //         (Expression::Variable(left), Expression::Variable(right)) => true,
+    //         (Expression::Constant(left), Expression::Constant(right)) => true,
+    //         (Expression::Addition(left), Expression::Addition(right)) => true,
+    //         (Expression::Multiplication(left), Expression::Multiplication(right)) => true,
+    //         (Expression::Exponentiation(left), Expression::Exponentiation(right)) => true,
+    //         (Expression::Fraction(left), Expression::Fraction(right)) => true,
+    //         (Expression::Equality(left), Expression::Equality(right)) => true,
+    //         (Expression::Negation(left), Expression::Negation(right)) => true,
+    //         (Expression::Function(left), Expression::Function(right)) => true,
+    //         _ => false,
+    //     }
+    // }
 
     pub fn simplify(self) -> Expression {
         match self {
@@ -303,54 +361,30 @@ impl Expression {
         match self {
             Expression::Number(_) => false,
             Expression::Variable(var) => {
-                if var == &variable {
-                    true
-                } else {
-                    false
-                }
-            }
-            Expression::Constant(_) => false,
-            Expression::Addition(add) => {
-                add.sub_expr.iter().any(|expr| {
-                    expr.contain_var(variable)
-                })
-            }
-            Expression::Multiplication(mult) => {
-                mult.sub_expr.iter().any(|expr| {
-                    expr.contain_var(variable)
-                })
-            }
-            Expression::Exponentiation(expo) => {
-                expo.sub_expr.iter().any(|expr| {
-                    expr.contain_var(variable)
-                })
-            }
-            Expression::Fraction(frac) => {
-                frac.sub_expr.iter().any(|expr| {
-                    expr.contain_var(variable)
-                })
-            }
-            Expression::Equality(eq) => {
-                eq.sub_expr.iter().any(|expr| {
-                    expr.contain_var(variable)
-                })
-            }
-            Expression::Negation(neg) => {
-                neg.sub_expr.contain_var(variable)
+                var == &variable
                 
             }
+            Expression::Constant(_) => false,
+            Expression::Addition(add) => add.sub_expr.iter().any(|expr| expr.contain_var(variable)),
+            Expression::Multiplication(mult) => {
+                mult.sub_expr.iter().any(|expr| expr.contain_var(variable))
+            }
+            Expression::Exponentiation(expo) => {
+                expo.sub_expr.iter().any(|expr| expr.contain_var(variable))
+            }
+            Expression::Fraction(frac) => {
+                frac.sub_expr.iter().any(|expr| expr.contain_var(variable))
+            }
+            Expression::Equality(eq) => eq.sub_expr.iter().any(|expr| expr.contain_var(variable)),
+            Expression::Negation(neg) => neg.sub_expr.contain_var(variable),
             Expression::Function(func) => match *func.clone() {
                 FunctionType::Predefined(_, args) | FunctionType::UserDefined(_, args) => {
-                    args.iter().any(|expr| {
-                        expr.contain_var(variable)
-                    })
+                    args.iter().any(|expr| expr.contain_var(variable))
                 }
             },
             Expression::Error => panic!("There should be no error in the expression tree"),
         }
     }
-
-
 }
 
 // Print functions
@@ -414,9 +448,9 @@ impl Expression {
     }
 
     pub fn print_console(&self) {
+        // TODO add memoization to avoid multiple call to get_height and get_length
         let mut position: Vec<(String, (i8, i8))> = Vec::new();
         self.calc_pos(&mut position, State::Same(0, 0));
-        // println!("{:?}", position);
 
         let (min_x, max_x, min_y, max_y) = position.iter().fold(
             (0, 0, 0, 0),
@@ -432,9 +466,11 @@ impl Expression {
             grid.insert((y, x), character);
         }
 
+        
         // Print the grid
-        let mut skip = 0;
+        // let mut skip = 0;
         for y in (min_y..=max_y).rev() {
+            let mut skip = 0;
             for x in min_x..=max_x {
                 if skip > 0 {
                     skip -= 1;
@@ -452,8 +488,6 @@ impl Expression {
     }
 
     fn calc_pos(&self, position: &mut Vec<(String, (i8, i8))>, prev_state: State) {
-        // faire un grand array de hauteur height et length
-        // et mettre les caractères dedans en fonction de current_length et current_height
         match self {
             Expression::Number(num) => position.push((num.to_string(), prev_state.get_pos())),
             Expression::Variable(var) => position.push((var.to_string(), prev_state.get_pos())),
@@ -859,7 +893,7 @@ impl Display for Expression {
                 frac.get_denominator()
             ),
             Expression::Equality(eq) => {
-                write!(f, "{} = {}", eq.get_left_side(), eq.get_right_side())
+                write!(f, "{}", eq)
             }
             Expression::Negation(neg) => write!(f, "-({})", neg.sub_expr),
             Expression::Function(func) => write!(f, "{}", func),
@@ -1156,7 +1190,6 @@ mod test_simplify {
                 vec![Expression::Variable('x'),]
             ))
         )));
-        
 
         // a(f) + a(f)
         assert!(Expression::addition(

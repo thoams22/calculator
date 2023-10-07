@@ -1,37 +1,35 @@
-use std::{mem::MaybeUninit, path::Components};
-
 use crate::ast::{
-    addition::{self, Addition},
+    addition::Addition,
     equality::Equality,
     function::{FunctionType, PredefinedFunction},
-    math::{
-        extract_coefficient_expression_exponent, prime_factor, ExpressionExponent, PrimeFactor,
-    },
     multiplication::Multiplication,
     ConstantKind, Expression,
 };
 
-pub fn solve_one_var_one_occurence(mut equality: Equality) -> Expression {
-    let mut solved = Equality::new(equality.get_right_side(), equality.get_left_side());
+use crate::utils::{
+    extract_coefficient_expression_exponent, prime_factor, ExpressionExponent, PrimeFactor,
+};
 
+pub fn solve_one_var_one_occurence(mut equality: Equality, variable: char) -> Expression {
+    let mut solved = Equality::new(equality.get_right_side(), equality.get_left_side());
     while !solved.equal(&equality) {
         solved = equality.clone();
 
-        addition_to_right(&mut equality);
+        addition_to_right(&mut equality, variable);
 
-        multiplication_to_right(&mut equality);
+        multiplication_to_right(&mut equality, variable);
 
-        fraction_to_right(&mut equality);
+        fraction_to_right(&mut equality, variable);
 
-        function_to_right(&mut equality);
+        function_to_right(&mut equality, variable);
 
-        exponent_to_right(&mut equality);
+        exponent_to_right(&mut equality, variable);
     }
 
-    Expression::Equality(Box::new(equality))
+    Expression::Equality(Box::new(equality)).simplify()
 }
 
-pub fn solve_one_var_multiple_occurence(mut equality: Equality, variable: char) -> Vec<Expression> {
+pub fn solve_one_var_multiple_occurence(equality: Equality, variable: char) -> Vec<Expression> {
     if let Expression::Addition(addition) = equality.get_left_side() {
         let mut components: Vec<(Vec<PrimeFactor>, Vec<ExpressionExponent>)> = Vec::new();
         for expr in addition.sub_expr {
@@ -73,37 +71,36 @@ pub fn solve_one_var_multiple_occurence(mut equality: Equality, variable: char) 
                         Expression::Multiplication(Box::new(coefficient)).simplify(),
                     ));
                 }
-            } else {
-                if comp.0.iter().all(|prime_factor| {
-                    if let Expression::Number(num) = prime_factor.exponent {
-                        coefficient.sub_expr.push(Expression::exponentiation(
-                            Expression::Number(prime_factor.prime),
-                            Expression::Number(num),
-                        ));
-                        true
-                    } else {
-                        false
-                    }
-                }) {
-                    polynomial.push(Monome::new(
-                        0,
-                        Expression::Multiplication(Box::new(coefficient)).simplify(),
+            } else if comp.0.iter().all(|prime_factor| {
+                if let Expression::Number(num) = prime_factor.exponent {
+                    coefficient.sub_expr.push(Expression::exponentiation(
+                        Expression::Number(prime_factor.prime),
+                        Expression::Number(num),
                     ));
+                    true
+                } else {
+                    false
                 }
+            }) {
+                polynomial.push(Monome::new(
+                    0,
+                    Expression::Multiplication(Box::new(coefficient)).simplify(),
+                ));
             }
         });
         if polynomial.len() == components.len() {
+            polynomial.sort_by_key(|monome| std::cmp::Reverse(monome.degree));
             // println!("{:?}", polynomial);
             println!("Maybe a polynomial");
             if polynomial[0].degree == 2 && polynomial[1].degree == 1 {
                 println!("Second degree");
                 let solutions = solve_second_degree(polynomial);
-                return solutions.iter().map(|solution| {
-                    Expression::equality(
-                        Expression::Variable(variable),
-                        solution.clone(),
-                    )
-                }).collect();
+                return solutions
+                    .iter()
+                    .map(|solution| {
+                        Expression::equality(Expression::Variable(variable), solution.clone())
+                    })
+                    .collect();
             } else {
                 is_second_degree_multiple(polynomial);
             }
@@ -124,23 +121,22 @@ fn is_second_degree_multiple(polynomial: Vec<Monome>) -> bool {
             let decomp_min_deg = prime_factor(polynomial[1].degree);
             if decomp_min_deg[0].0 == 2 && (polynomial[0].degree - polynomial[1].degree) == 2 {
                 println!(
-                    "possible variable swap: {} {}",
+                    "possible variable swap: {} {} , bcs 2 is a factor",
                     polynomial[0].degree, polynomial[1].degree
                 );
                 return true;
             } else if (polynomial[0].degree / polynomial[1].degree) == 2 {
                 println!(
-                    "possible variable swap: {} {}",
+                    "possible variable swap: {} {} , bcs rapport of 2 between the two",
                     polynomial[0].degree, polynomial[1].degree
                 );
             }
         }
     }
-
     false
 }
 
-fn solve_second_degree(polynomial: Vec<Monome>) -> Vec<Expression>{
+fn solve_second_degree(polynomial: Vec<Monome>) -> Vec<Expression> {
     let mut a = Expression::Number(0);
     let mut b = Expression::Number(0);
     let mut c = Expression::Number(0);
@@ -164,18 +160,50 @@ fn solve_second_degree(polynomial: Vec<Monome>) -> Vec<Expression>{
     .simplify();
 
     if let Expression::Number(num) = discriminant {
-        if num < 0 {
-            println!("Complex solution");
-            vec![]
-        } else if num == 0 {
-            println!("One solution");
-            vec![Expression::fraction(
-                Expression::negation(b.clone()),
-                Expression::multiplication(Expression::Number(2), a.clone()),
-            ).simplify()]
-        } else {
-            println!("Two solutions");
-            vec![Expression::fraction(
+        match num {
+            0 => {
+                println!("One solution");
+                vec![Expression::fraction(
+                    Expression::negation(b.clone()),
+                    Expression::multiplication(Expression::Number(2), a.clone()),
+                )
+                .simplify()]
+            }
+            _ if num < 0 => {
+                println!("Complex solution");
+                vec![]
+            }
+            _ => {
+                println!("Two solutions");
+                vec![
+                    Expression::fraction(
+                        Expression::addition(
+                            Expression::negation(b.clone()),
+                            Expression::function(FunctionType::Predefined(
+                                PredefinedFunction::Sqrt,
+                                vec![discriminant.clone()],
+                            )),
+                        ),
+                        Expression::multiplication(Expression::Number(2), a.clone()),
+                    )
+                    .simplify(),
+                    Expression::fraction(
+                        Expression::addition(
+                            Expression::negation(b.clone()),
+                            Expression::negation(Expression::function(FunctionType::Predefined(
+                                PredefinedFunction::Sqrt,
+                                vec![discriminant.clone()],
+                            ))),
+                        ),
+                        Expression::multiplication(Expression::Number(2), a.clone()),
+                    )
+                    .simplify(),
+                ]
+            }
+        }
+    } else {
+        vec![
+            Expression::fraction(
                 Expression::addition(
                     Expression::negation(b.clone()),
                     Expression::function(FunctionType::Predefined(
@@ -184,7 +212,9 @@ fn solve_second_degree(polynomial: Vec<Monome>) -> Vec<Expression>{
                     )),
                 ),
                 Expression::multiplication(Expression::Number(2), a.clone()),
-            ).simplify(), Expression::fraction(
+            )
+            .simplify(),
+            Expression::fraction(
                 Expression::addition(
                     Expression::negation(b.clone()),
                     Expression::negation(Expression::function(FunctionType::Predefined(
@@ -193,28 +223,9 @@ fn solve_second_degree(polynomial: Vec<Monome>) -> Vec<Expression>{
                     ))),
                 ),
                 Expression::multiplication(Expression::Number(2), a.clone()),
-            ).simplify()]
-        }
-    } else {
-        vec![Expression::fraction(
-            Expression::addition(
-                Expression::negation(b.clone()),
-                Expression::function(FunctionType::Predefined(
-                    PredefinedFunction::Sqrt,
-                    vec![discriminant.clone()],
-                )),
-            ),
-            Expression::multiplication(Expression::Number(2), a.clone()),
-        ).simplify(), Expression::fraction(
-            Expression::addition(
-                Expression::negation(b.clone()),
-                Expression::negation(Expression::function(FunctionType::Predefined(
-                    PredefinedFunction::Sqrt,
-                    vec![discriminant.clone()],
-                ))),
-            ),
-            Expression::multiplication(Expression::Number(2), a.clone()),
-        ).simplify()]
+            )
+            .simplify(),
+        ]
     }
 }
 
@@ -232,17 +243,17 @@ impl Monome {
         }
     }
 
-    pub fn get_all(&self) -> (i64, Expression) {
-        (self.degree, self.coefficient.clone())
-    }
+    // pub fn get_all(&self) -> (i64, Expression) {
+    //     (self.degree, self.coefficient.clone())
+    // }
 }
 
-fn exponent_to_right(equality: &mut Equality) {
+fn exponent_to_right(equality: &mut Equality, variable: char) {
     if let Expression::Exponentiation(expo) = equality.get_left_side() {
-        let var_base: Option<_> = expo.get_base().contain_vars();
-        let var_exponent: Option<_> = expo.get_exponent().contain_vars();
+        let var_base: bool = expo.get_base().contain_var(variable);
+        let var_exponent: bool = expo.get_exponent().contain_var(variable);
 
-        if var_base.is_some() && var_exponent.is_none() {
+        if var_base && !var_exponent {
             equality.simplified = false;
             equality.replace_left_side(expo.get_base());
             equality.replace_right_side(
@@ -252,7 +263,7 @@ fn exponent_to_right(equality: &mut Equality) {
                 ))
                 .simplify(),
             );
-        } else if var_base.is_none() && var_exponent.is_some() {
+        } else if !var_base && var_exponent {
             equality.simplified = false;
             equality.replace_left_side(
                 Expression::function(FunctionType::Predefined(
@@ -272,13 +283,13 @@ fn exponent_to_right(equality: &mut Equality) {
     }
 }
 
-fn addition_to_right(equality: &mut Equality) {
+fn addition_to_right(equality: &mut Equality, variable: char) {
     if let Expression::Addition(mut add) = equality.get_left_side() {
         let mut remove_indices: Vec<usize> = Vec::new();
         let mut new_right = Addition::from_vec(Vec::new());
 
         for i in 0..add.sub_expr.len() {
-            if add.sub_expr[i].contain_vars().is_none() {
+            if !add.sub_expr[i].contain_var(variable) {
                 new_right.sub_expr.push(add.sub_expr[i].clone());
                 remove_indices.push(i);
             }
@@ -299,13 +310,13 @@ fn addition_to_right(equality: &mut Equality) {
     }
 }
 
-fn multiplication_to_right(equality: &mut Equality) {
+fn multiplication_to_right(equality: &mut Equality, variable: char) {
     if let Expression::Multiplication(mut mult) = equality.get_left_side() {
         let mut remove_indices: Vec<usize> = Vec::new();
         let mut new_right = Multiplication::from_vec(Vec::new());
 
         for i in 0..mult.sub_expr.len() {
-            if mult.sub_expr[i].contain_vars().is_none() {
+            if !mult.sub_expr[i].contain_var(variable) {
                 new_right.sub_expr.push(mult.sub_expr[i].clone());
                 remove_indices.push(i);
             }
@@ -327,13 +338,13 @@ fn multiplication_to_right(equality: &mut Equality) {
     }
 }
 
-fn fraction_to_right(equality: &mut Equality) {
+fn fraction_to_right(equality: &mut Equality, variable: char) {
     if let Expression::Fraction(frac) = equality.get_left_side() {
         match (
-            frac.get_denominator().contain_vars(),
-            frac.get_numerator().contain_vars(),
+            frac.get_denominator().contain_var(variable),
+            frac.get_numerator().contain_var(variable),
         ) {
-            (Some(_), Some(_)) => {
+            (true, true) => {
                 equality.simplified = false;
                 equality.replace_left_side(Expression::Number(1));
                 equality.replace_right_side(
@@ -344,7 +355,7 @@ fn fraction_to_right(equality: &mut Equality) {
                     .simplify(),
                 );
             }
-            (None, Some(_)) => {
+            (false, true) => {
                 equality.simplified = false;
                 equality.replace_left_side(frac.get_numerator());
                 equality.replace_right_side(
@@ -352,7 +363,7 @@ fn fraction_to_right(equality: &mut Equality) {
                         .simplify(),
                 );
             }
-            (Some(_), None) => {
+            (true, false) => {
                 equality.simplified = false;
                 equality.replace_left_side(frac.get_denominator());
                 equality.replace_right_side(
@@ -360,12 +371,12 @@ fn fraction_to_right(equality: &mut Equality) {
                         .simplify(),
                 );
             }
-            (None, None) => {}
+            (false, false) => {}
         }
     }
 }
 
-fn function_to_right(equality: &mut Equality) {
+fn function_to_right(equality: &mut Equality, variable: char) {
     if let Expression::Function(fun) = equality.get_left_side() {
         if let FunctionType::Predefined(name, args) = *fun {
             match name {
@@ -491,6 +502,7 @@ mod test_single_variable_solve {
     #[test]
     fn test_addition_to_right() {
         // x + 2 + y + 3 + z + 4 + w + 5 = 1
+        // x + y + z + 13 = -w
         let mut equality = Equality::new(
             Expression::addition_from_vec(vec![
                 Expression::Variable('x'),
@@ -502,22 +514,25 @@ mod test_single_variable_solve {
                 Expression::Variable('w'),
                 Expression::Number(5),
             ]),
-            Expression::Number(1),
+            Expression::Number(0),
         );
 
-        addition_to_right(&mut equality);
+        addition_to_right(&mut equality, 'w');
+        Expression::Equality(Box::new(equality.clone())).print_console();
 
         assert!(equality.equal(&Equality::new(
-            Expression::addition_from_vec(vec![
+            Expression::Variable('w'),
+            Expression::negation(Expression::addition_from_vec(vec![
                 Expression::Variable('x'),
                 Expression::Variable('y'),
                 Expression::Variable('z'),
-                Expression::Variable('w'),
-            ]),
-            Expression::Number(-13),
+                Expression::Number(14),
+            ]))
+            .simplify(),
         )));
 
         // x + sin(pi) = 1
+        // x = 1 - sin(pi)
         let mut equality = Equality::new(
             Expression::addition_from_vec(vec![
                 Expression::Variable('x'),
@@ -529,7 +544,7 @@ mod test_single_variable_solve {
             Expression::Number(1),
         );
 
-        addition_to_right(&mut equality);
+        addition_to_right(&mut equality, 'x');
 
         assert!(equality.equal(&Equality::new(
             Expression::Variable('x'),
@@ -546,6 +561,7 @@ mod test_single_variable_solve {
     #[test]
     fn test_multiplication_to_right() {
         // x * 2 * y * 3 * z * 4 * w * 5 = 1
+        // x = 1 / (120 * y * z * w)
         let mut equality = Equality::new(
             Expression::multiplication_from_vec(vec![
                 Expression::Variable('x'),
@@ -560,19 +576,27 @@ mod test_single_variable_solve {
             Expression::Number(1),
         );
 
-        multiplication_to_right(&mut equality);
+        multiplication_to_right(&mut equality, 'x');
 
-        assert!(equality.equal(&Equality::new(
-            Expression::multiplication_from_vec(vec![
+        assert!(
+            equality.equal(&Equality::new(
                 Expression::Variable('x'),
-                Expression::Variable('y'),
-                Expression::Variable('z'),
-                Expression::Variable('w'),
-            ]),
-            Expression::fraction(Expression::Number(1), Expression::Number(120))
-        )));
+                Expression::fraction(
+                    Expression::Number(1),
+                    Expression::multiplication_from_vec(vec![
+                        Expression::Number(120),
+                        Expression::Variable('y'),
+                        Expression::Variable('z'),
+                        Expression::Variable('w'),
+                    ])
+                )
+            )),
+            "Expected: x = 1 / (120 * y * z * w)\nGot: x = {}",
+            equality
+        );
 
         // x * sin(pi) = 1
+        // x = 1 / sin(pi)
         let mut equality = Equality::new(
             Expression::multiplication_from_vec(vec![
                 Expression::Variable('x'),
@@ -584,49 +608,64 @@ mod test_single_variable_solve {
             Expression::Number(1),
         );
 
-        multiplication_to_right(&mut equality);
+        multiplication_to_right(&mut equality, 'x');
 
-        assert!(equality.equal(&Equality::new(
-            Expression::Variable('x'),
-            Expression::fraction(
-                Expression::Number(1),
-                Expression::function(FunctionType::Predefined(
-                    PredefinedFunction::Sin,
-                    vec![Expression::Constant(ConstantKind::Pi)],
-                )),
-            )
-        )));
+        assert!(
+            equality.equal(&Equality::new(
+                Expression::Variable('x'),
+                Expression::fraction(
+                    Expression::Number(1),
+                    Expression::function(FunctionType::Predefined(
+                        PredefinedFunction::Sin,
+                        vec![Expression::Constant(ConstantKind::Pi)],
+                    ))
+                )
+            )),
+            "Expected: x = 1 / sin(pi)\nGot: x = {}",
+            equality
+        );
     }
 
     #[test]
     fn test_fraction_to_right() {
         // x / 2 = 1
+        // x = 2
         let mut equality = Equality::new(
             Expression::fraction(Expression::Variable('x'), Expression::Number(2)),
             Expression::Number(1),
         );
 
-        fraction_to_right(&mut equality);
+        fraction_to_right(&mut equality, 'x');
 
-        assert!(equality.equal(&Equality::new(
-            Expression::Variable('x'),
-            Expression::Number(2),
-        )));
+        assert!(
+            equality.equal(&Equality::new(
+                Expression::Variable('x'),
+                Expression::Number(2),
+            )),
+            "Expected: x = 2\nGot: x = {}",
+            equality
+        );
 
         // 2 / x = 1
+        // x = 2
         let mut equality = Equality::new(
             Expression::fraction(Expression::Number(2), Expression::Variable('x')),
             Expression::Number(1),
         );
 
-        fraction_to_right(&mut equality);
+        fraction_to_right(&mut equality, 'x');
 
-        assert!(equality.equal(&Equality::new(
-            Expression::Variable('x'),
-            Expression::Number(2),
-        )));
+        assert!(
+            equality.equal(&Equality::new(
+                Expression::Variable('x'),
+                Expression::Number(2),
+            )),
+            "Expected: x = 2\nGot: x = {}",
+            equality
+        );
 
         // x / sin(pi) = 1
+        // x = sin(pi)
         let mut equality = Equality::new(
             Expression::fraction(
                 Expression::Variable('x'),
@@ -638,44 +677,58 @@ mod test_single_variable_solve {
             Expression::Number(1),
         );
 
-        fraction_to_right(&mut equality);
+        fraction_to_right(&mut equality, 'x');
 
-        assert!(equality.equal(&Equality::new(
-            Expression::Variable('x'),
-            Expression::function(FunctionType::Predefined(
-                PredefinedFunction::Sin,
-                vec![Expression::Constant(ConstantKind::Pi)],
-            ))
-        )));
+        assert!(
+            equality.equal(&Equality::new(
+                Expression::Variable('x'),
+                Expression::function(FunctionType::Predefined(
+                    PredefinedFunction::Sin,
+                    vec![Expression::Constant(ConstantKind::Pi)],
+                ))
+            )),
+            "Expected: x = sin(pi)\nGot: x = {}",
+            equality
+        );
     }
 
     #[test]
     fn test_exponentiation_to_right() {
         // x ^ 2 = 25
+        // x = 5
         let mut equality = Equality::new(
             Expression::exponentiation(Expression::Variable('x'), Expression::Number(2)),
             Expression::Number(25),
         );
 
-        exponent_to_right(&mut equality);
+        exponent_to_right(&mut equality, 'x');
 
-        assert!(equality.equal(&Equality::new(
-            Expression::Variable('x'),
-            Expression::Number(5)
-        )));
+        assert!(
+            equality.equal(&Equality::new(
+                Expression::Variable('x'),
+                Expression::Number(5)
+            )),
+            "Expected: x = 5\nGot: x = {}",
+            equality
+        );
 
         // 2 ^ x = 32
+        // x = 5
         let mut equality = Equality::new(
             Expression::exponentiation(Expression::Number(2), Expression::Variable('x')),
             Expression::Number(32),
         );
 
-        exponent_to_right(&mut equality);
+        exponent_to_right(&mut equality, 'x');
 
-        assert!(equality.equal(&Equality::new(
-            Expression::Variable('x'),
-            Expression::Number(5)
-        )));
+        assert!(
+            equality.equal(&Equality::new(
+                Expression::Variable('x'),
+                Expression::Number(5)
+            )),
+            "Expected: x = 5\nGot: x = {}",
+            equality
+        );
     }
 
     #[test]
@@ -689,17 +742,22 @@ mod test_single_variable_solve {
             Expression::Number(1),
         );
 
-        function_to_right(&mut equality);
+        function_to_right(&mut equality, 'x');
 
-        assert!(equality.equal(&Equality::new(
-            Expression::Variable('x'),
-            Expression::function(FunctionType::Predefined(
-                PredefinedFunction::Asin,
-                vec![Expression::Number(1)],
+        assert!(
+            equality.equal(&Equality::new(
+                Expression::Variable('x'),
+                Expression::function(FunctionType::Predefined(
+                    PredefinedFunction::Asin,
+                    vec![Expression::Number(1)],
+                )),
             )),
-        )));
+            "Expected: x = asin(1)\nGot: x = {}",
+            equality
+        );
 
         // asin(x) = 1
+        // x = sin(1)
         let mut equality = Equality::new(
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Asin,
@@ -708,17 +766,22 @@ mod test_single_variable_solve {
             Expression::Number(1),
         );
 
-        function_to_right(&mut equality);
+        function_to_right(&mut equality, 'x');
 
-        assert!(equality.equal(&Equality::new(
-            Expression::Variable('x'),
-            Expression::function(FunctionType::Predefined(
-                PredefinedFunction::Sin,
-                vec![Expression::Number(1)],
+        assert!(
+            equality.equal(&Equality::new(
+                Expression::Variable('x'),
+                Expression::function(FunctionType::Predefined(
+                    PredefinedFunction::Sin,
+                    vec![Expression::Number(1)],
+                )),
             )),
-        )));
+            "Expected: x = sin(1)\nGot: x = {}",
+            equality
+        );
 
         // ln(x) = 1
+        // x = e
         let mut equality = Equality::new(
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Ln,
@@ -727,14 +790,19 @@ mod test_single_variable_solve {
             Expression::Number(1),
         );
 
-        function_to_right(&mut equality);
+        function_to_right(&mut equality, 'x');
 
-        assert!(equality.equal(&Equality::new(
-            Expression::Variable('x'),
-            Expression::Constant(ConstantKind::E),
-        )));
+        assert!(
+            equality.equal(&Equality::new(
+                Expression::Variable('x'),
+                Expression::Constant(ConstantKind::E),
+            )),
+            "Expected: x = e\nGot: x = {}",
+            equality
+        );
 
         // log(2, x) = 2
+        // x = 4
         let mut equality = Equality::new(
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Log,
@@ -743,14 +811,19 @@ mod test_single_variable_solve {
             Expression::Number(2),
         );
 
-        function_to_right(&mut equality);
+        function_to_right(&mut equality, 'x');
 
-        assert!(equality.equal(&Equality::new(
-            Expression::Variable('x'),
-            Expression::Number(4),
-        ),));
+        assert!(
+            equality.equal(&Equality::new(
+                Expression::Variable('x'),
+                Expression::Number(4),
+            )),
+            "Expected: x = 4\nGot: x = {}",
+            equality
+        );
 
         // sqrt(x) = 5
+        // x = 25
         let mut equality = Equality::new(
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Sqrt,
@@ -759,14 +832,19 @@ mod test_single_variable_solve {
             Expression::Number(5),
         );
 
-        function_to_right(&mut equality);
+        function_to_right(&mut equality, 'x');
 
-        assert!(equality.equal(&Equality::new(
-            Expression::Variable('x'),
-            Expression::Number(25),
-        )));
+        assert!(
+            equality.equal(&Equality::new(
+                Expression::Variable('x'),
+                Expression::Number(25),
+            )),
+            "Expected: x = 25\nGot: x = {}",
+            equality
+        );
 
         // root(3, x) = 5
+        // x = 125
         let mut equality = Equality::new(
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Root,
@@ -775,11 +853,15 @@ mod test_single_variable_solve {
             Expression::Number(5),
         );
 
-        function_to_right(&mut equality);
+        function_to_right(&mut equality, 'x');
 
-        assert!(equality.equal(&Equality::new(
-            Expression::Variable('x'),
-            Expression::Number(125)
-        )));
+        assert!(
+            equality.equal(&Equality::new(
+                Expression::Variable('x'),
+                Expression::Number(125)
+            )),
+            "Expected: x = 125\nGot: x = {}",
+            equality
+        );
     }
 }

@@ -89,7 +89,6 @@ impl Addition {
             while j < self.sub_expr.len() {
                 let (second_coefficient, second_expr) =
                     Self::extract_coefficient_and_expr(self.sub_expr[j].clone());
-
                 match (expr.clone(), second_expr) {
                     (Expression::Function(f_expr), Expression::Function(f_sec_expr)) => {
                         if let Some(fun) = Self::simplify_function(
@@ -197,7 +196,7 @@ impl Addition {
                         *coeff_1 += coeff_2;
                         Some(Expression::function(func_1))
                     } else {
-                        let coefficient = coeff_1.clone();
+                        let coefficient = *coeff_1;
                         *coeff_1 = 1;
                         Some(Expression::function(FunctionType::Predefined(
                             PredefinedFunction::Ln,
@@ -213,7 +212,7 @@ impl Addition {
                         *coeff_1 += coeff_2;
                         Some(Expression::function(func_1))
                     } else {
-                        let coefficient = coeff_1.clone();
+                        let coefficient = *coeff_1;
                         *coeff_1 = 1;
                         Some(Expression::function(FunctionType::Predefined(
                             PredefinedFunction::Log,
@@ -257,6 +256,11 @@ impl Addition {
                         Expression::Multiplication(mult)
                     },
                 )
+            }
+            Expression::Negation(neg) => {
+                let mut extracted = Self::extract_coefficient_and_expr(neg.sub_expr);
+                extracted.0 = -extracted.0;
+                extracted
             }
             _ => (1, expr),
         }

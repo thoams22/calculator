@@ -1,11 +1,28 @@
 mod singleveriable;
 
 use crate::{
-    ast::{equality::Equality, Expression},
+    ast::{equality::Equality, Expression, Statement},
+    diagnostic::Diagnostics,
     solver::singleveriable::solve_one_var_multiple_occurence,
 };
 
 use self::singleveriable::solve_one_var_one_occurence;
+
+pub struct Evaluator {
+    statement: Statement,
+    diagnostics: Diagnostics,
+}
+
+impl Evaluator {
+    pub fn new(statement: Statement, diagnostics: Diagnostics) -> Self {
+        Self {
+            statement,
+            diagnostics,
+        }
+    }
+
+    // pub fn evaluate(&mut self, ) -> {}
+}
 
 pub fn solve(expression: Expression, variable: Option<char>) -> Vec<Expression> {
     solver(
@@ -14,7 +31,7 @@ pub fn solve(expression: Expression, variable: Option<char>) -> Vec<Expression> 
         } else {
             Equality::new(expression, Expression::Number(0))
         },
-        None,
+        variable,
     )
 }
 
@@ -31,38 +48,39 @@ fn all_to_left_side(mut equality: Equality) -> Equality {
     equality
 }
 
-fn solver(equality: Equality, variable: Option<char>) -> Vec<Expression> {
+fn solver(mut equality: Equality, variable: Option<char>) -> Vec<Expression> {
     if let Some(variables) = equality.get_left_side().contain_vars() {
-        // print!("{:?}", variables);
-        match variables.len() {
-            1 => {
-                if variables.values().all(|occurence| occurence == &1) {
-                    vec![solve_one_var_one_occurence(equality)]
-                } else {
-                    if let Some(var) = variable {
-                        println!("Solve for {var}");
-                        solve_one_var_multiple_occurence(equality, var)
-                    } else {
-                        solve_one_var_multiple_occurence(
-                            equality,
-                            *variables.iter().max_by_key(|var| 
-                                var.1
-                            ).unwrap().0,
-                        )
+        if let Some(var) = variable {
+            if let Some(occurence) = variables.get(&var) {
+                match occurence {
+                    1 => {
+                        vec![solve_one_var_one_occurence(equality, var)]
                     }
+                    _ => solve_one_var_multiple_occurence(equality, var),
                 }
-
-                // solve for one variable
-                // if variable occur 1 => simple isolation
-                // else regroup the variable
+            } else {
+                println!("Ask to solve for {var} but not in the expression");
+                vec![Expression::Error]
             }
-            _ => {
-                // solve for multiple var
-                vec![Expression::Equality(Box::new(equality))]
+        } else if variables.len() == 1 {
+            let var = variables.keys().next().unwrap();
+            if variables.get(var).unwrap() == &1 {
+                vec![solve_one_var_one_occurence(equality, *var)]
+            } else {
+                solve_one_var_multiple_occurence(
+                    equality,
+                    *variables.iter().max_by_key(|var| var.1).unwrap().0,
+                )
             }
+        } else {
+            solve_one_var_multiple_occurence(
+                equality,
+                *variables.iter().max_by_key(|var| var.1).unwrap().0,
+            )
         }
     } else {
-        vec![equality.get_left_side().simplify()]
+        equality.simplified = false;
+        vec![equality.simplify()]
     }
 }
 
@@ -106,7 +124,7 @@ mod test_solver {
 
         assert!(result[0].equal(&Expression::equality(
             Expression::Variable('x'),
-            Expression::fraction(Expression::Number(-2), Expression::Number(2))
+            Expression::Number(-1)
         )));
 
         // sqrt(x - 8) = 9

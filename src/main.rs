@@ -1,9 +1,6 @@
 // TODO next functionality
 
-// add a isolator only for one variables
-// add a sustitutor -> y^4 + 6y^2 + 2 = 0 -> x = y^2, x^2 + 6x + 2 = 0
-
-// Systeme équation
+// System équation
 // Polynome
 // How to make derivate and integral
 // Differential equations
@@ -17,15 +14,18 @@
 // factorial => Gamma function
 // matrix
 
+// Big num so not limited by i128
+
 use std::io;
 
-use crate::{ast::Expression, parser::Parser, solver::solve};
+use crate::{ast::Expression, parser::Parser, solver::solve, utils::substitute};
 
 mod ast;
 mod diagnostic;
 mod lexer;
 mod parser;
 mod solver;
+mod utils;
 
 fn main() {
     let mut expression = String::new();
@@ -47,12 +47,7 @@ fn main() {
             println!("\n***END OF ERROR***");
             println!();
         } else {
-            let result = parser.parse();
-
-            // for statement in &result {
-            //     println!("\n");
-            //     statement.print_tree(None);
-            // }
+            let statement = parser.parse();
 
             if !parser.get_diagnostic_message().is_empty() {
                 println!("\n*** PARSER ERROR***\n");
@@ -63,26 +58,24 @@ fn main() {
                 println!("\n***END OF ERROR***");
                 println!();
             } else {
-                let mut simplified_expression: Vec<Expression> = Vec::new();
 
-                for statement in result {
-                    simplified_expression.push(statement.simplify());
-                }
+                println!("Before");
+                statement.print_console();
 
-                for statement in simplified_expression {
-                    // statement.print_tree(None);
-                    statement.print_console();
+                let result = match statement {
+                    ast::Statement::Simplify(expression) => vec![expression.simplify()],
+                    ast::Statement::Solve(expression) => solve(expression, None),
+                    ast::Statement::SolveFor(expression, variable) => solve(expression, Some(variable)),
+                    ast::Statement::Replace(expression, equality) => solve(substitute(expression, &equality), None),
+                    ast::Statement::Error => vec![Expression::Error],
+                };
 
-                    let solved = solve(statement, None);
-
-                    println!("\n");
-                    println!("Solved expression:\n");
-                    solved.iter().for_each(|solution| {
-                        // solution.print_tree(None);
-                        println!("\n");
-                        solution.print_console();
-                    });
-                }
+                println!("\n");
+                println!("After:\n");
+                result.iter().for_each(|solution| {
+                    // solution.print_tree(None);
+                    solution.print_console();
+                });
             }
         }
 
