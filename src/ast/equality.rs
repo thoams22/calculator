@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::ast::Expression;
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Hash, Eq)]
 pub struct Equality {
     pub sub_expr: [Expression; 2],
     pub simplified: bool,

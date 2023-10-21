@@ -5,6 +5,7 @@ pub mod fraction;
 pub mod function;
 pub mod multiplication;
 pub mod negation;
+mod varibale;
 
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
@@ -23,26 +24,67 @@ pub enum Statement {
     Solve(Expression),
     SolveFor(Expression, char),
     Replace(Expression, Equality),
-    // Systeme(Vec<Equality>),
-    // Derivate(Expression, var), // add degrée ?
-    // Integrale(Expression, var),
-    // Limit(Expression, var),
     Error,
 }
 
 impl Statement {
     pub fn print_console(&self) {
-        // TODO modify this to print good SolveFor and Replace
+        let mut position: Vec<(String, (i8, i8))> = Vec::new();
+
+        // memoize (length, height, above_height)
+        let mut memoize: HashMap<Expression, (i8, i8, i8)> = HashMap::new();
+
         match self {
-            Statement::Simplify(expr) => expr.print_console(),
-            Statement::Solve(expr) => expr.print_console(),
+            Statement::Simplify(expr) => expr.calc_pos(&mut position, State::Same(0, 0), &mut memoize),
+            Statement::Solve(expr) => expr.calc_pos(&mut position, State::Same(0, 0), &mut memoize),
             Statement::SolveFor(expr, var) => {
-                Expression::equality(expr.clone(), Expression::Variable(*var)).print_console()
+                let mut length = expr.get_length(&mut memoize);
+                expr.calc_pos(&mut position, State::Same(0, 0), &mut memoize);
+                Expression::Variable(',').calc_pos(&mut position, State::Same(0, length), &mut memoize);
+                length += 2;
+                Expression::Variable(*var).calc_pos(&mut position, State::Same(0, length), &mut memoize);
             }
             Statement::Replace(expr, eq) => {
-                Expression::equality(expr.clone(), eq.get_left_side().clone()).print_console()
+                let mut length = expr.get_length(&mut memoize);
+                expr.calc_pos(&mut position, State::Same(0, 0), &mut memoize);
+                Expression::Variable(',').calc_pos(&mut position, State::Same(0, length), &mut memoize);
+                length += 2;
+                Expression::Equality(Box::new(eq.clone()))
+                    .calc_pos(&mut position, State::Same(0, length), &mut memoize);
             }
             Statement::Error => panic!("there should'nt be error in the ast"),
+        }
+
+        let (min_x, max_x, min_y, max_y) = position.iter().fold(
+            (0, 0, 0, 0),
+            |(min_x, max_x, min_y, max_y), &(_, (y, x))| {
+                (min_x.min(x), max_x.max(x), min_y.min(y), max_y.max(y))
+            },
+        );
+
+        let mut grid = HashMap::new();
+
+        // Populate the grid with characters
+        for (character, (y, x)) in position {
+            grid.insert((y, x), character);
+        }
+
+        // Print the grid
+        for y in (min_y..=max_y).rev() {
+            let mut skip = 0;
+            for x in min_x..=max_x {
+                if skip > 0 {
+                    skip -= 1;
+                    continue;
+                }
+                if let Some(character) = grid.get(&(y, x)) {
+                    print!("{}", character);
+                    skip = character.len() as i8 - 1;
+                } else {
+                    print!(" ");
+                }
+            }
+            println!();
         }
     }
 }
@@ -59,11 +101,9 @@ impl Display for Statement {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Hash, Eq)]
 pub enum Expression {
     Number(i64),
-    // Complex(Box<Complex>)
-    // Infinity,
     Variable(char),
     Constant(ConstantKind),
     Addition(Box<Addition>),
@@ -75,10 +115,6 @@ pub enum Expression {
     Function(Box<FunctionType>),
     Error,
 }
-
-// TODO
-// Add a solve for Expression for x + a = 5, x ??
-// Add a sys eq for x + y = 2, x - y = 3 ??
 
 // Helper constructor
 impl Expression {
@@ -119,12 +155,13 @@ impl Expression {
     }
 }
 
+// use generic and impl trait to reduce the following ?
 impl Expression {
     pub fn equal(&self, other: &Expression) -> bool {
         match (self, other) {
             (Expression::Number(left), Expression::Number(right)) => left == right,
             (Expression::Variable(left), Expression::Variable(right)) => left == right,
-            (Expression::Constant(left), Expression::Constant(right)) => left == right,
+            (Expression::Constant(left), Expression::Constant(right)) => left.equal(right),
             (Expression::Addition(left), Expression::Addition(right)) => left.equal(right),
             (Expression::Multiplication(left), Expression::Multiplication(right)) => {
                 left.equal(right)
@@ -139,22 +176,6 @@ impl Expression {
             _ => false,
         }
     }
-
-    // pub fn similar(&self, other: &Expression) -> bool {
-    //     match (self, other) {
-    //         (Expression::Number(left), Expression::Number(right)) => true,
-    //         (Expression::Variable(left), Expression::Variable(right)) => true,
-    //         (Expression::Constant(left), Expression::Constant(right)) => true,
-    //         (Expression::Addition(left), Expression::Addition(right)) => true,
-    //         (Expression::Multiplication(left), Expression::Multiplication(right)) => true,
-    //         (Expression::Exponentiation(left), Expression::Exponentiation(right)) => true,
-    //         (Expression::Fraction(left), Expression::Fraction(right)) => true,
-    //         (Expression::Equality(left), Expression::Equality(right)) => true,
-    //         (Expression::Negation(left), Expression::Negation(right)) => true,
-    //         (Expression::Function(left), Expression::Function(right)) => true,
-    //         _ => false,
-    //     }
-    // }
 
     pub fn simplify(self) -> Expression {
         match self {
@@ -360,10 +381,7 @@ impl Expression {
     pub fn contain_var(&self, variable: char) -> bool {
         match self {
             Expression::Number(_) => false,
-            Expression::Variable(var) => {
-                var == &variable
-                
-            }
+            Expression::Variable(var) => var == &variable,
             Expression::Constant(_) => false,
             Expression::Addition(add) => add.sub_expr.iter().any(|expr| expr.contain_var(variable)),
             Expression::Multiplication(mult) => {
@@ -448,9 +466,12 @@ impl Expression {
     }
 
     pub fn print_console(&self) {
-        // TODO add memoization to avoid multiple call to get_height and get_length
         let mut position: Vec<(String, (i8, i8))> = Vec::new();
-        self.calc_pos(&mut position, State::Same(0, 0));
+
+        // memoize (length, height, above_height)
+        let mut memoize: HashMap<Expression, (i8, i8, i8)> = HashMap::new();
+
+        self.calc_pos(&mut position, State::Same(0, 0), &mut memoize);
 
         let (min_x, max_x, min_y, max_y) = position.iter().fold(
             (0, 0, 0, 0),
@@ -466,9 +487,7 @@ impl Expression {
             grid.insert((y, x), character);
         }
 
-        
         // Print the grid
-        // let mut skip = 0;
         for y in (min_y..=max_y).rev() {
             let mut skip = 0;
             for x in min_x..=max_x {
@@ -487,7 +506,7 @@ impl Expression {
         }
     }
 
-    fn calc_pos(&self, position: &mut Vec<(String, (i8, i8))>, prev_state: State) {
+    fn calc_pos(&self, position: &mut Vec<(String, (i8, i8))>, prev_state: State, memoized: &mut HashMap<Expression, (i8, i8, i8)>) {
         match self {
             Expression::Number(num) => position.push((num.to_string(), prev_state.get_pos())),
             Expression::Variable(var) => position.push((var.to_string(), prev_state.get_pos())),
@@ -498,17 +517,16 @@ impl Expression {
                 let mut max_height = 1;
                 let mut max_height_index = 0;
                 for (i, expr) in add.sub_expr.iter().enumerate() {
-                    let height = expr.get_height();
+                    let height = expr.get_height(memoized);
                     if height > max_height {
                         max_height = height;
                         max_height_index = i;
                     }
                 }
-
                 let len = position.len();
                 let mut position_clone = position.clone();
 
-                add.sub_expr[max_height_index].calc_pos(&mut position_clone, prev_state);
+                add.sub_expr[max_height_index].calc_pos(&mut position_clone, prev_state, memoized);
 
                 let pos_y = position_clone[len].1 .0;
                 let mut pos_x = prev_state.get_pos_x();
@@ -519,15 +537,15 @@ impl Expression {
                         pos_x += 3;
                     }
 
-                    expr.calc_pos(position, State::Same(pos_y, pos_x));
-                    pos_x += expr.get_length();
+                    expr.calc_pos(position, State::Same(pos_y, pos_x), memoized);
+                    pos_x += expr.get_length(memoized);
                 }
             }
             Expression::Multiplication(mult) => {
                 let mut max_height = 1;
                 let mut max_height_index = 0;
                 for (i, expr) in mult.sub_expr.iter().enumerate() {
-                    let height = expr.get_height();
+                    let height = expr.get_height(memoized);
                     if height > max_height {
                         max_height = height;
                         max_height_index = i;
@@ -537,7 +555,7 @@ impl Expression {
                 let len = position.len();
                 let mut position_clone = position.clone();
 
-                mult.sub_expr[max_height_index].calc_pos(&mut position_clone, prev_state);
+                mult.sub_expr[max_height_index].calc_pos(&mut position_clone, prev_state, memoized);
 
                 let pos_y = position_clone[len].1 .0;
                 let mut pos_x = prev_state.get_pos_x();
@@ -548,86 +566,87 @@ impl Expression {
                         pos_x += 3;
                     }
 
-                    expr.calc_pos(position, State::Same(pos_y, pos_x));
-                    pos_x += expr.get_length();
+                    expr.calc_pos(position, State::Same(pos_y, pos_x), memoized);
+                    pos_x += expr.get_length(memoized);
                 }
             }
             Expression::Exponentiation(expo) => match prev_state {
                 State::Over(mut pos_y, mut pos_x) | State::Same(mut pos_y, mut pos_x) => {
                     expo.get_base()
-                        .calc_pos(position, State::Same(pos_y, pos_x));
-                    pos_y += expo.get_base().get_above_height();
-                    pos_x += expo.get_base().get_length();
+                        .calc_pos(position, State::Same(pos_y, pos_x), memoized);
+                    pos_y += expo.get_base().get_above_height(memoized);
+                    pos_x += expo.get_base().get_length(memoized);
                     expo.get_exponent()
-                        .calc_pos(position, State::Over(pos_y, pos_x));
+                        .calc_pos(position, State::Over(pos_y, pos_x), memoized);
                 }
                 State::Under(mut pos_y, mut pos_x) => {
                     pos_y -=
-                        expo.get_exponent().get_height() - 1 + expo.get_base().get_above_height();
+                        expo.get_exponent().get_height(memoized) - 1 + expo.get_base().get_above_height(memoized);
                     expo.get_base()
-                        .calc_pos(position, State::Same(pos_y, pos_x));
-                    pos_x += expo.get_base().get_length();
+                        .calc_pos(position, State::Same(pos_y, pos_x), memoized);
+                    pos_x += expo.get_base().get_length(memoized);
                     expo.get_exponent().calc_pos(
                         position,
-                        State::Over(pos_y + expo.get_base().get_above_height(), pos_x),
+                        State::Over(pos_y + expo.get_base().get_above_height(memoized), pos_x)
+                        , memoized
                     );
                 }
             },
             Expression::Fraction(frac) => {
                 let (pos_y, mut pos_x) = match prev_state {
                     State::Over(pos_y, pos_x) => {
-                        (pos_y + frac.get_denominator().get_height(), pos_x)
+                        (pos_y + frac.get_denominator().get_height(memoized), pos_x)
                     }
                     State::Under(pos_y, pos_x) => {
-                        (pos_y - frac.get_numerator().get_height(), pos_x)
+                        (pos_y - frac.get_numerator().get_height(memoized), pos_x)
                     }
                     State::Same(pos_y, pos_x) => (pos_y, pos_x),
                 };
 
-                let num_length = frac.get_numerator().get_length();
-                let denom_length = frac.get_denominator().get_length();
+                let num_length = frac.get_numerator().get_length(memoized);
+                let denom_length = frac.get_denominator().get_length(memoized);
 
                 if denom_length < num_length {
                     for i in 0..num_length {
                         position.push(("-".to_string(), (pos_y, pos_x + i)));
                     }
                     frac.get_numerator()
-                        .calc_pos(position, State::Over(pos_y + 1, pos_x));
+                        .calc_pos(position, State::Over(pos_y + 1, pos_x), memoized);
                     pos_x += (num_length - denom_length) / 2;
                     frac.get_denominator()
-                        .calc_pos(position, State::Under(pos_y - 1, pos_x));
+                        .calc_pos(position, State::Under(pos_y - 1, pos_x), memoized);
                 } else {
                     for i in 0..denom_length {
                         position.push(("-".to_string(), (pos_y, pos_x + i)));
                     }
                     frac.get_denominator()
-                        .calc_pos(position, State::Under(pos_y - 1, pos_x));
+                        .calc_pos(position, State::Under(pos_y - 1, pos_x), memoized);
                     pos_x += (denom_length - num_length) / 2;
                     frac.get_numerator()
-                        .calc_pos(position, State::Over(pos_y + 1, pos_x));
+                        .calc_pos(position, State::Over(pos_y + 1, pos_x), memoized);
                 }
             }
             Expression::Equality(eq) => {
                 let (pos_y, mut pos_x) = prev_state.get_pos();
-                eq.get_left_side().calc_pos(position, prev_state);
-                pos_x += eq.get_left_side().get_length();
+                eq.get_left_side().calc_pos(position, prev_state, memoized);
+                pos_x += eq.get_left_side().get_length(memoized);
                 position.push((" = ".to_string(), (pos_y, pos_x)));
                 pos_x += 3;
                 eq.get_right_side()
-                    .calc_pos(position, State::Same(pos_y, pos_x));
+                    .calc_pos(position, State::Same(pos_y, pos_x), memoized);
             }
             Expression::Negation(neg) => {
                 let (pos_y, mut pos_x) = prev_state.get_pos();
                 position.push(("-".to_string(), (pos_y, pos_x)));
                 pos_x += 1;
-                neg.sub_expr.calc_pos(position, State::Same(pos_y, pos_x));
+                neg.sub_expr.calc_pos(position, State::Same(pos_y, pos_x), memoized);
             }
             Expression::Function(func) => {
                 let (mut pos_y, mut pos_x) = match prev_state {
                     State::Over(pos_y, pos_x) => {
-                        (pos_y + self.get_height() - self.get_above_height(), pos_x)
+                        (pos_y + self.get_height(memoized) - self.get_above_height(memoized), pos_x)
                     }
-                    State::Under(pos_y, pos_x) => (pos_y - self.get_above_height() + 1, pos_x),
+                    State::Under(pos_y, pos_x) => (pos_y - self.get_above_height(memoized) + 1, pos_x),
                     State::Same(pos_y, pos_x) => (pos_y, pos_x),
                 };
 
@@ -635,17 +654,17 @@ impl Expression {
                 position.push((func.name(), (pos_y, pos_x)));
                 pos_x += func.name().len() as i8;
 
-                self.make_parenthesis(&mut pos_y, &mut pos_x, position, false);
+                self.make_parenthesis(&mut pos_y, &mut pos_x, position, false, memoized);
 
                 for (i, arg) in func.args().iter().enumerate() {
                     if i != 0 {
                         position.push((", ".to_string(), (pos_y, pos_x)));
                         pos_x += 2;
                     }
-                    arg.calc_pos(position, State::Same(pos_y, pos_x));
-                    pos_x += arg.get_length();
+                    arg.calc_pos(position, State::Same(pos_y, pos_x), memoized);
+                    pos_x += arg.get_length(memoized);
                 }
-                self.make_parenthesis(&mut pos_y, &mut pos_x, position, true);
+                self.make_parenthesis(&mut pos_y, &mut pos_x, position, true, memoized);
             }
             Expression::Error => {
                 println!("Error");
@@ -653,15 +672,20 @@ impl Expression {
         }
     }
 
-    fn get_length(&self) -> i8 {
-        match self {
+    fn get_length(&self, memoized: &mut HashMap<Expression, (i8, i8, i8)>) -> i8 {
+        if let Some((l, _h, _ah)) = memoized.get(self) {
+            if *l != 0 {
+                return *l;
+            }
+        }
+        let length = match self {
             Expression::Number(num) => num.to_string().len() as i8,
             Expression::Variable(var) => var.to_string().len() as i8,
             Expression::Constant(cons) => cons.as_text().len() as i8,
             Expression::Addition(add) => {
                 let mut length = 0;
                 for expr in add.sub_expr.iter() {
-                    length += expr.get_length() + 3;
+                    length += expr.get_length(memoized) + 3;
                 }
                 length -= 3;
                 length
@@ -669,114 +693,147 @@ impl Expression {
             Expression::Multiplication(mult) => {
                 let mut length = 0;
                 for expr in mult.sub_expr.iter() {
-                    length += expr.get_length() + 3;
+                    length += expr.get_length(memoized) + 3;
                 }
                 length -= 3;
                 length
             }
             Expression::Exponentiation(expo) => {
-                expo.get_base().get_length() + expo.get_exponent().get_length()
+                expo.get_base().get_length(memoized) + expo.get_exponent().get_length(memoized)
             }
             Expression::Fraction(frac) => frac
                 .get_numerator()
-                .get_length()
-                .max(frac.get_denominator().get_length()),
+                .get_length(memoized)
+                .max(frac.get_denominator().get_length(memoized)),
             Expression::Equality(eq) => {
-                eq.get_left_side().get_length() + eq.get_right_side().get_length()
+                eq.get_left_side().get_length(memoized) + eq.get_right_side().get_length(memoized)
             }
-            Expression::Negation(neg) => neg.sub_expr.get_length() + 1,
+            Expression::Negation(neg) => neg.sub_expr.get_length(memoized) + 1,
             Expression::Function(func) => {
                 let mut length = func.name().len() as i8 + 2;
                 for arg in func.args() {
-                    length += arg.get_length() + 2;
+                    length += arg.get_length(memoized) + 2;
                 }
                 length - 2
             }
             Expression::Error => {
                 panic!("There should be no error in the expression tree");
             }
-        }
-    }
+        };
 
-    fn get_height(&self) -> i8 {
-        match self {
+        if let Some((l, _h, _ah)) = memoized.get_mut(self) {
+            *l = length;
+        } else {
+            memoized.insert(self.clone(), (length, 0, 0));
+        }
+        length
+    }
+    
+    fn get_height(&self, memoized: &mut HashMap<Expression, (i8, i8, i8)>) -> i8 {
+        if let Some((_l, h, _ah)) = memoized.get(self) {
+            if *h != 0 {
+                return *h;
+            }
+        }
+        let height = match self {
             Expression::Number(_) | Expression::Variable(_) | Expression::Constant(_) => 1,
             Expression::Addition(add) => {
                 let mut max_height = 0;
                 for expr in &add.sub_expr {
-                    max_height = max_height.max(expr.get_height());
+                    max_height = max_height.max(expr.get_height(memoized));
                 }
                 max_height
             }
             Expression::Multiplication(mult) => {
                 let mut max_height = 0;
                 for expr in &mult.sub_expr {
-                    max_height = max_height.max(expr.get_height());
+                    max_height = max_height.max(expr.get_height(memoized));
                 }
                 max_height
             }
             Expression::Exponentiation(expo) => {
-                expo.get_base().get_height() + expo.get_exponent().get_height()
+                expo.get_base().get_height(memoized) + expo.get_exponent().get_height(memoized)
             }
             Expression::Fraction(frac) => {
-                frac.get_numerator().get_height() + frac.get_denominator().get_height() + 1
+                frac.get_numerator().get_height(memoized) + frac.get_denominator().get_height(memoized) + 1
             }
             Expression::Equality(eq) => eq
                 .get_left_side()
-                .get_height()
-                .max(eq.get_right_side().get_height()),
-            Expression::Negation(neg) => neg.sub_expr.get_height(),
+                .get_height(memoized)
+                .max(eq.get_right_side().get_height(memoized)),
+            Expression::Negation(neg) => neg.sub_expr.get_height(memoized),
             Expression::Function(func) => {
                 let mut max_height = 0;
                 for arg in func.args() {
-                    max_height = max_height.max(arg.get_height());
+                    max_height = max_height.max(arg.get_height(memoized));
                 }
                 max_height
             }
             Expression::Error => {
                 panic!("There should be no error in the expression tree");
             }
+        };
+
+        if let Some((_l, h, _ah)) = memoized.get_mut(self) {
+            *h = height;
+        } else {
+            memoized.insert(self.clone(), (0, height, 0));
         }
+
+        height
     }
 
     /// Return the height of the expression above the current zero.
     ///
     /// Used for parenthesis to know how much to go up
-    fn get_above_height(&self) -> i8 {
-        match self {
+    fn get_above_height(&self, memoized: &mut HashMap<Expression, (i8, i8, i8)>) -> i8 {
+        if let Some((_l, _h, ah)) = memoized.get(self) {
+            if *ah != 0 {
+                return *ah;
+            }
+        }
+        let above_height = match self {
             Expression::Number(_) | Expression::Variable(_) | Expression::Constant(_) => 1,
             Expression::Addition(add) => {
                 let mut max_height = 0;
                 for expr in &add.sub_expr {
-                    max_height = max_height.max(expr.get_above_height());
+                    max_height = max_height.max(expr.get_above_height(memoized));
                 }
                 max_height
             }
             Expression::Multiplication(mult) => {
                 let mut max_height = 0;
                 for expr in &mult.sub_expr {
-                    max_height = max_height.max(expr.get_above_height());
+                    max_height = max_height.max(expr.get_above_height(memoized));
                 }
                 max_height
             }
             Expression::Exponentiation(expo) => {
-                expo.get_base().get_above_height() + expo.get_exponent().get_height()
+                expo.get_base().get_above_height(memoized) + expo.get_exponent().get_height(memoized)
             }
-            Expression::Fraction(frac) => frac.get_numerator().get_height() + 1,
+            Expression::Fraction(frac) => frac.get_numerator().get_height(memoized) + 1,
             Expression::Equality(eq) => eq
                 .get_left_side()
-                .get_above_height()
-                .max(eq.get_right_side().get_above_height()),
-            Expression::Negation(neg) => neg.sub_expr.get_above_height(),
+                .get_above_height(memoized)
+                .max(eq.get_right_side().get_above_height(memoized)),
+            Expression::Negation(neg) => neg.sub_expr.get_above_height(memoized),
             Expression::Function(func) => {
                 let mut max_height = 0;
                 for expr in func.args() {
-                    max_height = max_height.max(expr.get_above_height());
+                    max_height = max_height.max(expr.get_above_height(memoized));
                 }
                 max_height
             }
             Expression::Error => panic!("There should be no error in the expression tree"),
+        };
+
+        if let Some((_l, _h, ah)) = memoized.get_mut(self) {
+            *ah = above_height;
+        } else {
+            memoized.insert(self.clone(), (0, 0, above_height));
         }
+
+        above_height
     }
 
     /// Allways make the right parenthesis except if left is true
@@ -786,8 +843,9 @@ impl Expression {
         pos_x: &mut i8,
         position: &mut Vec<(String, (i8, i8))>,
         left: bool,
+        memoized: &mut HashMap<Expression, (i8, i8, i8)>
     ) {
-        let height = self.get_height();
+        let height = self.get_height(memoized);
         if height == 1 {
             if left {
                 position.push((")".to_string(), (*pos_y, *pos_x)));
@@ -797,7 +855,7 @@ impl Expression {
             *pos_x += 1;
         } else {
             // better to make a single if left ?
-            let mut stage = *pos_y + self.get_above_height() - 1;
+            let mut stage = *pos_y + self.get_above_height(memoized) - 1;
             if left {
                 position.push(("\\".to_string(), (stage, *pos_x)));
             } else {
@@ -822,6 +880,7 @@ impl Expression {
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum State {
+    // y, x
     Over(i8, i8),
     Under(i8, i8),
     Same(i8, i8),
@@ -902,7 +961,7 @@ impl Display for Expression {
     }
 }
 
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Debug, Clone, Copy, Hash, Eq)]
 pub enum ConstantKind {
     E,
     Pi,
@@ -914,6 +973,10 @@ impl ConstantKind {
             ConstantKind::E => "e",
             ConstantKind::Pi => "pi",
         }
+    }
+
+    pub fn equal(&self, other: &ConstantKind) -> bool {
+        self == other
     }
 }
 

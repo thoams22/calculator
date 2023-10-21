@@ -117,6 +117,8 @@ impl Parser {
                 } else if let Expression::Equality(eq) = after_comma {
                     result = Statement::Replace(expr, *eq);
                     break;
+                } else {
+                    self.diagnostics.report_expected_var_or_equality(expr)
                 }
             } else {
                 if let Expression::Equality(_) = expr {

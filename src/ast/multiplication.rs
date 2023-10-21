@@ -2,7 +2,7 @@ use crate::ast::Expression;
 
 use super::addition::Addition;
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Hash, Eq)]
 pub struct Multiplication {
     pub sub_expr: Vec<Expression>,
     pub simplified: bool,

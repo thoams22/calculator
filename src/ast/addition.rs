@@ -2,7 +2,7 @@ use crate::ast::Expression;
 
 use super::function::{FunctionType, PredefinedFunction};
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Hash, Eq)]
 pub struct Addition {
     pub sub_expr: Vec<Expression>,
     pub simplified: bool,

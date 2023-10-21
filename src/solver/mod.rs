@@ -24,7 +24,8 @@ impl Evaluator {
     // pub fn evaluate(&mut self, ) -> {}
 }
 
-pub fn solve(expression: Expression, variable: Option<char>) -> Vec<Expression> {
+pub fn solve(mut expression: Expression, variable: Option<char>) -> Vec<Expression> {
+    expression = expression.simplify();
     solver(
         if let Expression::Equality(equality) = expression {
             all_to_left_side(*equality)
@@ -73,10 +74,24 @@ fn solver(mut equality: Equality, variable: Option<char>) -> Vec<Expression> {
                 )
             }
         } else {
-            solve_one_var_multiple_occurence(
-                equality,
-                *variables.iter().max_by_key(|var| var.1).unwrap().0,
-            )
+            if let Some(occurence) = variables.get(&'x') {
+                match occurence {
+                    1 => {
+                        vec![solve_one_var_one_occurence(equality, 'x')]
+                    }
+                    _ => solve_one_var_multiple_occurence(equality, 'x'),
+                }
+            } else {
+                let var = variables.keys().next().unwrap();
+                if variables.get(var).unwrap() == &1 {
+                    vec![solve_one_var_one_occurence(equality, *var)]
+                } else {
+                    solve_one_var_multiple_occurence(
+                        equality,
+                        *variables.iter().max_by_key(|var| var.1).unwrap().0,
+                    )
+                }
+            }
         }
     } else {
         equality.simplified = false;

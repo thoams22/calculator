@@ -1,6 +1,6 @@
 use crate::ast::Expression;
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Hash, Eq)]
 pub struct Negation {
     pub sub_expr: Expression,
     pub simplified: bool,

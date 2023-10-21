@@ -3,7 +3,7 @@ use std::fmt::{Display, Formatter};
 use super::{ConstantKind, Expression};
 use crate::utils::is_perfect_power;
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Hash, Eq)]
 pub enum FunctionType {
     Predefined(PredefinedFunction, Vec<Expression>),
     UserDefined(String, Vec<Expression>),
@@ -298,7 +298,7 @@ impl Display for FunctionType {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Hash, Eq)]
 pub enum PredefinedFunction {
     // 1 args
     Sin,

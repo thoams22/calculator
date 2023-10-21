@@ -284,6 +284,7 @@ pub fn extract_coefficient_expression_exponent(
                 expressions,
             )
         }
+        // TODO keep sign of expression 
         Expression::Number(num) => (
             prime_factor(num)
                 .iter()
@@ -487,6 +488,7 @@ mod test_utils {
     use crate::ast::ConstantKind;
     use crate::utils::function::FunctionType;
     use crate::utils::function::PredefinedFunction;
+    use crate::utils::prime_factor;
     use crate::{
         ast::{equality::Equality, Expression},
         utils::substitute,
@@ -650,5 +652,38 @@ mod test_utils {
             Expression::Variable('y'),
             Expression::fraction(Expression::Variable('y'), Expression::Number(2))
         )));
+    }
+
+    #[test]
+    fn test_prime_factor() {
+        // 10
+        assert_eq!(
+            vec![(2, 1), (5, 1)],
+            prime_factor(10)
+        );
+
+        // 11
+        assert_eq!(
+            vec![(11, 1)],
+            prime_factor(11)
+        );
+
+        // 169
+        assert_eq!(
+            vec![(13, 2)],
+            prime_factor(169)
+        );
+
+        // -2
+        assert_eq!(
+            vec![(2, 1)],
+            prime_factor(-2)
+        );
+
+        // 4089
+        assert_eq!(
+            vec![(3, 1), (29, 1), (47, 1)],
+            prime_factor(4089)
+        );
     }
 }

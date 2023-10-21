@@ -8,7 +8,7 @@ use super::{
 use crate::utils::{extract_coefficient_expression_exponent, gcd, ExpressionExponent, PrimeFactor};
 
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Hash, Eq)]
 pub struct Fraction {
     pub sub_expr: [Expression; 2],
     pub simplified: bool,

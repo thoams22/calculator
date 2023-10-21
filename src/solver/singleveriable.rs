@@ -37,6 +37,7 @@ pub fn solve_one_var_multiple_occurence(equality: Equality, variable: char) -> V
         }
 
         let mut polynomial: Vec<Monome> = Vec::new();
+        // TODO add support for negative numbers for the coefficient degree 0
 
         // x^2 + 4yx + 3 => (2, 1), (1, 4y) (0, 3)
         // [((1, 1), (x, 2)),  ((2, 2), [(y, 1), (x, 1)]),  ((3, 1), ())]
@@ -65,7 +66,7 @@ pub fn solve_one_var_multiple_occurence(equality: Equality, variable: char) -> V
                             ));
                         }
                     });
-
+                    
                     polynomial.push(Monome::new(
                         degree,
                         Expression::Multiplication(Box::new(coefficient)).simplify(),
@@ -86,14 +87,13 @@ pub fn solve_one_var_multiple_occurence(equality: Equality, variable: char) -> V
                     0,
                     Expression::Multiplication(Box::new(coefficient)).simplify(),
                 ));
+                println!("Constant: {:?} {:?}", polynomial, comp.0);
             }
         });
         if polynomial.len() == components.len() {
             polynomial.sort_by_key(|monome| std::cmp::Reverse(monome.degree));
-            // println!("{:?}", polynomial);
             println!("Maybe a polynomial");
             if polynomial[0].degree == 2 && polynomial[1].degree == 1 {
-                println!("Second degree");
                 let solutions = solve_second_degree(polynomial);
                 return solutions
                     .iter()
@@ -124,12 +124,14 @@ fn is_second_degree_multiple(polynomial: Vec<Monome>) -> bool {
                     "possible variable swap: {} {} , bcs 2 is a factor",
                     polynomial[0].degree, polynomial[1].degree
                 );
+
                 return true;
             } else if (polynomial[0].degree / polynomial[1].degree) == 2 {
                 println!(
                     "possible variable swap: {} {} , bcs rapport of 2 between the two",
                     polynomial[0].degree, polynomial[1].degree
                 );
+                return true;
             }
         }
     }
@@ -140,6 +142,8 @@ fn solve_second_degree(polynomial: Vec<Monome>) -> Vec<Expression> {
     let mut a = Expression::Number(0);
     let mut b = Expression::Number(0);
     let mut c = Expression::Number(0);
+
+    println!("{:?}", polynomial);
 
     polynomial.into_iter().for_each(|monome| {
         if monome.degree == 2 {
@@ -159,6 +163,8 @@ fn solve_second_degree(polynomial: Vec<Monome>) -> Vec<Expression> {
     )
     .simplify();
 
+    println!("{}{}{}:{}", a, b, c, discriminant);
+
     if let Expression::Number(num) = discriminant {
         match num {
             0 => {
@@ -169,7 +175,7 @@ fn solve_second_degree(polynomial: Vec<Monome>) -> Vec<Expression> {
                 )
                 .simplify()]
             }
-            _ if num < 0 => {
+            _x if num < 0 => {
                 println!("Complex solution");
                 vec![]
             }
