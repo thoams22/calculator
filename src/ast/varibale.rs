@@ -1,16 +1,14 @@
-use crate::ast::Expression;
+use std::{fmt::Display, fmt::Formatter};
 
 #[derive(PartialEq, Debug, Clone, Hash, Eq)]
 pub struct Variable {
-    pub sub_expr: String,
-    pub simplified: bool,
+    pub sub_expr: String
 }
 
 impl Variable {
     pub fn new(sub_expr: String) -> Self {
         Self {
             sub_expr,
-            simplified: false,
         }
     }
 }
@@ -21,6 +19,8 @@ impl Variable {
     }
 }
 
-impl Variable {
-
+impl Display for Variable {
+    fn fmt(&self, f:&mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.sub_expr)
+    }
 }

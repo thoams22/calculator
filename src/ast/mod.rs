@@ -5,7 +5,7 @@ pub mod fraction;
 pub mod function;
 pub mod multiplication;
 pub mod negation;
-mod varibale;
+pub mod varibale;
 
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
@@ -17,12 +17,13 @@ use self::fraction::Fraction;
 use self::function::FunctionType;
 use self::multiplication::Multiplication;
 use self::negation::Negation;
+use self::varibale::Variable;
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum Statement {
     Simplify(Expression),
     Solve(Expression),
-    SolveFor(Expression, char),
+    SolveFor(Expression, Variable),
     Replace(Expression, Equality),
     Error,
 }
@@ -40,14 +41,14 @@ impl Statement {
             Statement::SolveFor(expr, var) => {
                 let mut length = expr.get_length(&mut memoize);
                 expr.calc_pos(&mut position, State::Same(0, 0), &mut memoize);
-                Expression::Variable(',').calc_pos(&mut position, State::Same(0, length), &mut memoize);
+                Expression::Variable(Variable::new(",".to_string())).calc_pos(&mut position, State::Same(0, length), &mut memoize);
                 length += 2;
-                Expression::Variable(*var).calc_pos(&mut position, State::Same(0, length), &mut memoize);
+                Expression::Variable(var.clone()).calc_pos(&mut position, State::Same(0, length), &mut memoize);
             }
             Statement::Replace(expr, eq) => {
                 let mut length = expr.get_length(&mut memoize);
                 expr.calc_pos(&mut position, State::Same(0, 0), &mut memoize);
-                Expression::Variable(',').calc_pos(&mut position, State::Same(0, length), &mut memoize);
+                Expression::Variable(Variable::new(",".to_string())).calc_pos(&mut position, State::Same(0, length), &mut memoize);
                 length += 2;
                 Expression::Equality(Box::new(eq.clone()))
                     .calc_pos(&mut position, State::Same(0, length), &mut memoize);
@@ -101,10 +102,25 @@ impl Display for Statement {
     }
 }
 
+pub trait Expr {
+    fn equal(&self, other: &Expression) -> bool;
+    fn contain_vars(&self) -> Option<HashMap<Variable, usize>>;
+    fn contain_var(&self, variable: &Variable) -> bool;
+    
+    fn simplify(self) -> Expression;
+    fn get_order(&self) -> u8;
+    
+    fn print_console(&self);
+    fn calc_pos(&self, position: &mut Vec<(String, (i8, i8))>, prev_state: State, memoized: &mut HashMap<Expression, (i8, i8, i8)>);
+    fn get_length(&self, memoized: &mut HashMap<Expression, (i8, i8, i8)>) -> i8;
+    fn get_height(&self, memoized: &mut HashMap<Expression, (i8, i8, i8)>) -> i8;
+    fn get_above_height(&self, memoized: &mut HashMap<Expression, (i8, i8, i8)>) -> i8;
+}
+
 #[derive(PartialEq, Debug, Clone, Hash, Eq)]
 pub enum Expression {
     Number(i64),
-    Variable(char),
+    Variable(Variable),
     Constant(ConstantKind),
     Addition(Box<Addition>),
     Multiplication(Box<Multiplication>),
@@ -153,6 +169,10 @@ impl Expression {
     pub fn equality(left: Expression, right: Expression) -> Expression {
         Expression::Equality(Box::new(Equality::new(left, right)))
     }
+
+    pub fn variable(var: String) -> Expression {
+        Expression::Variable(Variable::new(var))
+    }
 }
 
 // use generic and impl trait to reduce the following ?
@@ -160,7 +180,7 @@ impl Expression {
     pub fn equal(&self, other: &Expression) -> bool {
         match (self, other) {
             (Expression::Number(left), Expression::Number(right)) => left == right,
-            (Expression::Variable(left), Expression::Variable(right)) => left == right,
+            (Expression::Variable(left), Expression::Variable(right)) => left.equal(right),
             (Expression::Constant(left), Expression::Constant(right)) => left.equal(right),
             (Expression::Addition(left), Expression::Addition(right)) => left.equal(right),
             (Expression::Multiplication(left), Expression::Multiplication(right)) => {
@@ -231,24 +251,24 @@ impl Expression {
         }
     }
 
-    pub fn contain_vars(&self) -> Option<HashMap<char, usize>> {
+    pub fn contain_vars(&self) -> Option<HashMap<Variable, usize>> {
         match self {
             Expression::Number(_) => None,
             Expression::Variable(var) => {
                 let mut map = HashMap::new();
-                map.insert(*var, 1);
+                map.insert(var.clone(), 1);
                 Some(map)
             }
             Expression::Constant(_) => None,
             Expression::Addition(add) => {
-                let mut map: HashMap<char, usize> = HashMap::new();
+                let mut map: HashMap<Variable, usize> = HashMap::new();
                 for expr in add.sub_expr.iter() {
                     if let Some(mut sub_map) = expr.contain_vars() {
                         for (key, value) in sub_map.iter_mut() {
                             if let Some(occurence) = map.get_mut(key) {
                                 *occurence += *value;
                             } else {
-                                map.insert(*key, *value);
+                                map.insert(key.clone(), *value);
                             }
                         }
                     }
@@ -260,14 +280,14 @@ impl Expression {
                 }
             }
             Expression::Multiplication(mult) => {
-                let mut map: HashMap<char, usize> = HashMap::new();
+                let mut map: HashMap<Variable, usize> = HashMap::new();
                 for expr in mult.sub_expr.iter() {
                     if let Some(mut sub_map) = expr.contain_vars() {
                         for (key, value) in sub_map.iter_mut() {
                             if let Some(occurence) = map.get_mut(key) {
                                 *occurence += *value;
                             } else {
-                                map.insert(*key, *value);
+                                map.insert(key.clone(), *value);
                             }
                         }
                     }
@@ -279,14 +299,14 @@ impl Expression {
                 }
             }
             Expression::Exponentiation(expo) => {
-                let mut map: HashMap<char, usize> = HashMap::new();
+                let mut map: HashMap<Variable, usize> = HashMap::new();
                 for expr in expo.sub_expr.iter() {
                     if let Some(mut sub_map) = expr.contain_vars() {
                         for (key, value) in sub_map.iter_mut() {
                             if let Some(occurence) = map.get_mut(key) {
                                 *occurence += *value;
                             } else {
-                                map.insert(*key, *value);
+                                map.insert(key.clone(), *value);
                             }
                         }
                     }
@@ -298,14 +318,14 @@ impl Expression {
                 }
             }
             Expression::Fraction(frac) => {
-                let mut map: HashMap<char, usize> = HashMap::new();
+                let mut map: HashMap<Variable, usize> = HashMap::new();
                 for expr in frac.sub_expr.iter() {
                     if let Some(mut sub_map) = expr.contain_vars() {
                         for (key, value) in sub_map.iter_mut() {
                             if let Some(occurence) = map.get_mut(key) {
                                 *occurence += *value;
                             } else {
-                                map.insert(*key, *value);
+                                map.insert(key.clone(), *value);
                             }
                         }
                     }
@@ -317,14 +337,14 @@ impl Expression {
                 }
             }
             Expression::Equality(eq) => {
-                let mut map: HashMap<char, usize> = HashMap::new();
+                let mut map: HashMap<Variable, usize> = HashMap::new();
                 for expr in eq.sub_expr.iter() {
                     if let Some(mut sub_map) = expr.contain_vars() {
                         for (key, value) in sub_map.iter_mut() {
                             if let Some(occurence) = map.get_mut(key) {
                                 *occurence += *value;
                             } else {
-                                map.insert(*key, *value);
+                                map.insert(key.clone(), *value);
                             }
                         }
                     }
@@ -336,13 +356,13 @@ impl Expression {
                 }
             }
             Expression::Negation(neg) => {
-                let mut map: HashMap<char, usize> = HashMap::new();
+                let mut map: HashMap<Variable, usize> = HashMap::new();
                 if let Some(mut sub_map) = neg.sub_expr.contain_vars() {
                     for (key, value) in sub_map.iter_mut() {
                         if let Some(occurence) = map.get_mut(key) {
                             *occurence += *value;
                         } else {
-                            map.insert(*key, *value);
+                            map.insert(key.clone(), *value);
                         }
                     }
                 }
@@ -355,14 +375,14 @@ impl Expression {
             }
             Expression::Function(func) => match *func.clone() {
                 FunctionType::Predefined(_, args) | FunctionType::UserDefined(_, args) => {
-                    let mut map: HashMap<char, usize> = HashMap::new();
+                    let mut map: HashMap<Variable, usize> = HashMap::new();
                     for expr in args.iter() {
                         if let Some(mut sub_map) = expr.contain_vars() {
                             for (key, value) in sub_map.iter_mut() {
                                 if let Some(occurence) = map.get_mut(key) {
                                     *occurence += *value;
                                 } else {
-                                    map.insert(*key, *value);
+                                    map.insert(key.clone(), *value);
                                 }
                             }
                         }
@@ -378,10 +398,10 @@ impl Expression {
         }
     }
 
-    pub fn contain_var(&self, variable: char) -> bool {
+    pub fn contain_var(&self, variable: &Variable) -> bool {
         match self {
             Expression::Number(_) => false,
-            Expression::Variable(var) => var == &variable,
+            Expression::Variable(var) => var == variable,
             Expression::Constant(_) => false,
             Expression::Addition(add) => add.sub_expr.iter().any(|expr| expr.contain_var(variable)),
             Expression::Multiplication(mult) => {
@@ -509,7 +529,7 @@ impl Expression {
     fn calc_pos(&self, position: &mut Vec<(String, (i8, i8))>, prev_state: State, memoized: &mut HashMap<Expression, (i8, i8, i8)>) {
         match self {
             Expression::Number(num) => position.push((num.to_string(), prev_state.get_pos())),
-            Expression::Variable(var) => position.push((var.to_string(), prev_state.get_pos())),
+            Expression::Variable(var) => position.push((var.sub_expr.clone(), prev_state.get_pos())),
             Expression::Constant(cons) => {
                 position.push((cons.as_text().to_string(), prev_state.get_pos()))
             }
@@ -994,7 +1014,7 @@ mod test_simplify {
 
     use crate::ast::{
         function::{FunctionType, PredefinedFunction},
-        ConstantKind, Expression,
+        ConstantKind, Expression, varibale::Variable,
     };
 
     #[test]
@@ -1012,80 +1032,80 @@ mod test_simplify {
         // 1 + x +3 +Y
         assert!(Expression::addition_from_vec(vec![
             Expression::Number(1),
-            Expression::Variable('x'),
+            Expression::variable("x".to_string()),
             Expression::Number(3),
-            Expression::Variable('Y'),
+            Expression::Variable(Variable::new("Y".to_string())),
         ])
         .simplify()
         .equal(&Expression::addition_from_vec(vec![
             Expression::Number(4),
-            Expression::Variable('x'),
-            Expression::Variable('Y'),
+            Expression::variable("x".to_string()),
+            Expression::variable("Y".to_string()),
         ])));
 
         // 2 +x +4 +X +x
         assert!(Expression::addition_from_vec(vec![
             Expression::Number(2),
-            Expression::Variable('x'),
+            Expression::variable("x".to_string()),
             Expression::Number(4),
-            Expression::Variable('X'),
-            Expression::Variable('x'),
+            Expression::Variable(Variable::new("X".to_string())),
+            Expression::variable("x".to_string()),
         ])
         .simplify()
         .equal(&Expression::addition_from_vec(vec![
             Expression::Number(6),
-            Expression::Variable('X'),
-            Expression::multiplication(Expression::Number(2), Expression::Variable('x'),),
+            Expression::variable("X".to_string()),
+            Expression::multiplication(Expression::Number(2), Expression::variable("x".to_string()),),
         ])));
 
         // 2x + 2y + x
         assert!(Expression::addition_from_vec(vec![
-            Expression::multiplication(Expression::Number(2), Expression::Variable('x'),),
-            Expression::multiplication(Expression::Number(2), Expression::Variable('y'),),
-            Expression::Variable('x'),
+            Expression::multiplication(Expression::Number(2), Expression::variable("x".to_string()),),
+            Expression::multiplication(Expression::Number(2), Expression::variable("y".to_string()),),
+            Expression::variable("x".to_string()),
         ])
         .simplify()
         .equal(&Expression::addition_from_vec(vec![
-            Expression::multiplication(Expression::Number(3), Expression::Variable('x'),),
-            Expression::multiplication(Expression::Number(2), Expression::Variable('y'),),
+            Expression::multiplication(Expression::Number(3), Expression::variable("x".to_string()),),
+            Expression::multiplication(Expression::Number(2), Expression::variable("y".to_string()),),
         ])));
 
         // x^2 + y^2 + 2xy + x^2
         assert!(Expression::addition_from_vec(vec![
-            Expression::exponentiation(Expression::Variable('x'), Expression::Number(2)),
-            Expression::exponentiation(Expression::Variable('y'), Expression::Number(2)),
+            Expression::exponentiation(Expression::variable("x".to_string()), Expression::Number(2)),
+            Expression::exponentiation(Expression::variable("y".to_string()), Expression::Number(2)),
             Expression::multiplication(
-                Expression::multiplication(Expression::Number(2), Expression::Variable('x')),
-                Expression::Variable('y'),
+                Expression::multiplication(Expression::Number(2), Expression::variable("x".to_string())),
+                Expression::variable("y".to_string()),
             ),
-            Expression::exponentiation(Expression::Variable('x'), Expression::Number(2)),
+            Expression::exponentiation(Expression::variable("x".to_string()), Expression::Number(2)),
         ])
         .simplify()
         .equal(&Expression::addition_from_vec(vec![
             Expression::multiplication(
                 Expression::Number(2),
-                Expression::exponentiation(Expression::Variable('x'), Expression::Number(2))
+                Expression::exponentiation(Expression::variable("x".to_string()), Expression::Number(2))
             ),
             Expression::multiplication_from_vec(vec![
                 Expression::Number(2),
-                Expression::Variable('x'),
-                Expression::Variable('y'),
+                Expression::variable("x".to_string()),
+                Expression::variable("y".to_string()),
             ]),
-            Expression::exponentiation(Expression::Variable('y'), Expression::Number(2)),
+            Expression::exponentiation(Expression::variable("y".to_string()), Expression::Number(2)),
         ])));
 
         // a/b + b/a
         assert!(Expression::addition(
-            Expression::fraction(Expression::Variable('a'), Expression::Variable('b')),
-            Expression::fraction(Expression::Variable('b'), Expression::Variable('a')),
+            Expression::fraction(Expression::variable("a".to_string()), Expression::variable("b".to_string())),
+            Expression::fraction(Expression::variable("b".to_string()), Expression::variable("a".to_string())),
         )
         .simplify()
         .equal(&Expression::fraction(
             Expression::addition(
-                Expression::exponentiation(Expression::Variable('a'), Expression::Number(2)),
-                Expression::exponentiation(Expression::Variable('b'), Expression::Number(2)),
+                Expression::exponentiation(Expression::variable("a".to_string()), Expression::Number(2)),
+                Expression::exponentiation(Expression::variable("b".to_string()), Expression::Number(2)),
             ),
-            Expression::multiplication(Expression::Variable('a'), Expression::Variable('b')),
+            Expression::multiplication(Expression::variable("a".to_string()), Expression::variable("b".to_string())),
         )));
 
         // e + e
@@ -1103,22 +1123,22 @@ mod test_simplify {
         assert!(Expression::addition(
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Sin,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Sin,
-                vec![Expression::Variable('y')]
+                vec![Expression::variable("y".to_string())]
             )),
         )
         .simplify()
         .equal(&Expression::addition(
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Sin,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Sin,
-                vec![Expression::Variable('y')]
+                vec![Expression::variable("y".to_string())]
             )),
         )));
 
@@ -1126,11 +1146,11 @@ mod test_simplify {
         assert!(Expression::addition(
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Sin,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Sin,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
         )
         .simplify()
@@ -1138,7 +1158,7 @@ mod test_simplify {
             Expression::Number(2),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Sin,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
         )));
 
@@ -1148,12 +1168,12 @@ mod test_simplify {
                 Expression::Number(2),
                 Expression::function(FunctionType::Predefined(
                     PredefinedFunction::Sin,
-                    vec![Expression::Variable('x')]
+                    vec![Expression::variable("x".to_string())]
                 ))
             ),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Sin,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
         )
         .simplify()
@@ -1161,7 +1181,7 @@ mod test_simplify {
             Expression::Number(3),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Sin,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
         )));
 
@@ -1169,19 +1189,19 @@ mod test_simplify {
         assert!(Expression::addition(
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Ln,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Ln,
-                vec![Expression::Variable('y')]
+                vec![Expression::variable("y".to_string())]
             )),
         )
         .simplify()
         .equal(&Expression::function(FunctionType::Predefined(
             PredefinedFunction::Ln,
             vec![Expression::multiplication(
-                Expression::Variable('x'),
-                Expression::Variable('y')
+                Expression::variable("x".to_string()),
+                Expression::variable("y".to_string())
             )]
         ))));
 
@@ -1191,13 +1211,13 @@ mod test_simplify {
                 Expression::Number(2),
                 Expression::function(FunctionType::Predefined(
                     PredefinedFunction::Ln,
-                    vec![Expression::Variable('x')]
+                    vec![Expression::variable("x".to_string())]
                 ))
             ),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Ln,
                 vec![Expression::addition(
-                    Expression::Variable('x'),
+                    Expression::variable("x".to_string()),
                     Expression::Number(1)
                 )]
             )),
@@ -1206,8 +1226,8 @@ mod test_simplify {
         .equal(&Expression::function(FunctionType::Predefined(
             PredefinedFunction::Ln,
             vec![Expression::addition(
-                Expression::exponentiation(Expression::Variable('x'), Expression::Number(3)),
-                Expression::exponentiation(Expression::Variable('x'), Expression::Number(2)),
+                Expression::exponentiation(Expression::variable("x".to_string()), Expression::Number(3)),
+                Expression::exponentiation(Expression::variable("x".to_string()), Expression::Number(2)),
             )]
         ))));
 
@@ -1215,11 +1235,11 @@ mod test_simplify {
         assert!(Expression::addition(
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Ln,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Ln,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
         )
         .simplify()
@@ -1227,7 +1247,7 @@ mod test_simplify {
             Expression::Number(2),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Ln,
-                vec![Expression::Variable('x'),]
+                vec![Expression::variable("x".to_string()),]
             ))
         )));
 
@@ -1237,12 +1257,12 @@ mod test_simplify {
                 Expression::Number(2),
                 Expression::function(FunctionType::Predefined(
                     PredefinedFunction::Ln,
-                    vec![Expression::Variable('x')]
+                    vec![Expression::variable("x".to_string())]
                 ))
             ),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Ln,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
         )
         .simplify()
@@ -1250,7 +1270,7 @@ mod test_simplify {
             Expression::Number(3),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Ln,
-                vec![Expression::Variable('x'),]
+                vec![Expression::variable("x".to_string()),]
             ))
         )));
 
@@ -1258,11 +1278,11 @@ mod test_simplify {
         assert!(Expression::addition(
             Expression::function(FunctionType::UserDefined(
                 'a'.to_string(),
-                vec![Expression::Variable('f')]
+                vec![Expression::variable("f".to_string())]
             )),
             Expression::function(FunctionType::UserDefined(
                 'a'.to_string(),
-                vec![Expression::Variable('f')]
+                vec![Expression::variable("f".to_string())]
             )),
         )
         .simplify()
@@ -1270,7 +1290,7 @@ mod test_simplify {
             Expression::Number(2),
             Expression::function(FunctionType::UserDefined(
                 'a'.to_string(),
-                vec![Expression::Variable('f')]
+                vec![Expression::variable("f".to_string())]
             )),
         )));
 
@@ -1278,22 +1298,22 @@ mod test_simplify {
         assert!(Expression::addition(
             Expression::function(FunctionType::UserDefined(
                 'a'.to_string(),
-                vec![Expression::Variable('f')]
+                vec![Expression::variable("f".to_string())]
             )),
             Expression::function(FunctionType::UserDefined(
                 'a'.to_string(),
-                vec![Expression::Variable('g')]
+                vec![Expression::variable("g".to_string())]
             )),
         )
         .simplify()
         .equal(&Expression::addition(
             Expression::function(FunctionType::UserDefined(
                 'a'.to_string(),
-                vec![Expression::Variable('f')]
+                vec![Expression::variable("f".to_string())]
             )),
             Expression::function(FunctionType::UserDefined(
                 'a'.to_string(),
-                vec![Expression::Variable('g')]
+                vec![Expression::variable("g".to_string())]
             )),
         )));
     }
@@ -1313,79 +1333,79 @@ mod test_simplify {
         // 1 * x *3 *Y
         assert!(Expression::multiplication_from_vec(vec![
             Expression::Number(1),
-            Expression::Variable('x'),
+            Expression::variable("x".to_string()),
             Expression::Number(3),
-            Expression::Variable('Y'),
+            Expression::variable("Y".to_string()),
         ])
         .simplify()
         .equal(&Expression::multiplication_from_vec(vec![
             Expression::Number(3),
-            Expression::Variable('x'),
-            Expression::Variable('Y'),
+            Expression::variable("x".to_string()),
+            Expression::variable("Y".to_string()),
         ])));
 
         // 2 *x *4 *X *x
         assert!(Expression::multiplication_from_vec(vec![
             Expression::Number(2),
-            Expression::Variable('x'),
+            Expression::variable("x".to_string()),
             Expression::Number(4),
-            Expression::Variable('X'),
-            Expression::Variable('x'),
+            Expression::variable("X".to_string()),
+            Expression::variable("x".to_string()),
         ])
         .simplify()
         .equal(&Expression::multiplication_from_vec(vec![
             Expression::Number(8),
-            Expression::Variable('X'),
-            Expression::exponentiation(Expression::Variable('x'), Expression::Number(2)),
+            Expression::variable("X".to_string()),
+            Expression::exponentiation(Expression::variable("x".to_string()), Expression::Number(2)),
         ])));
 
         // 2x * 2y * x
         assert!(Expression::multiplication_from_vec(vec![
-            Expression::multiplication(Expression::Number(2), Expression::Variable('x'),),
-            Expression::multiplication(Expression::Number(2), Expression::Variable('y'),),
-            Expression::Variable('x'),
+            Expression::multiplication(Expression::Number(2), Expression::variable("x".to_string()),),
+            Expression::multiplication(Expression::Number(2), Expression::variable("y".to_string()),),
+            Expression::variable("x".to_string()),
         ])
         .simplify()
         .equal(&Expression::multiplication_from_vec(vec![
             Expression::Number(4),
-            Expression::Variable('y'),
-            Expression::exponentiation(Expression::Variable('x'), Expression::Number(2)),
+            Expression::variable("y".to_string()),
+            Expression::exponentiation(Expression::variable("x".to_string()), Expression::Number(2)),
         ])));
 
         // x^2 * y^2 * 2xy * x^2
         assert!(Expression::multiplication_from_vec(vec![
-            Expression::exponentiation(Expression::Variable('x'), Expression::Number(2)),
-            Expression::exponentiation(Expression::Variable('y'), Expression::Number(2)),
+            Expression::exponentiation(Expression::variable("x".to_string()), Expression::Number(2)),
+            Expression::exponentiation(Expression::variable("y".to_string()), Expression::Number(2)),
             Expression::multiplication(
-                Expression::multiplication(Expression::Number(2), Expression::Variable('x')),
-                Expression::Variable('y'),
+                Expression::multiplication(Expression::Number(2), Expression::variable("x".to_string())),
+                Expression::variable("y".to_string()),
             ),
-            Expression::exponentiation(Expression::Variable('x'), Expression::Number(2)),
+            Expression::exponentiation(Expression::variable("x".to_string()), Expression::Number(2)),
         ])
         .simplify()
         .equal(&Expression::multiplication_from_vec(vec![
-            Expression::exponentiation(Expression::Variable('x'), Expression::Number(5)),
+            Expression::exponentiation(Expression::variable("x".to_string()), Expression::Number(5)),
             Expression::Number(2),
-            Expression::exponentiation(Expression::Variable('y'), Expression::Number(3)),
+            Expression::exponentiation(Expression::variable("y".to_string()), Expression::Number(3)),
         ])));
 
         // a/b * b/a
         assert!(Expression::multiplication(
-            Expression::fraction(Expression::Variable('a'), Expression::Variable('b')),
-            Expression::fraction(Expression::Variable('b'), Expression::Variable('a')),
+            Expression::fraction(Expression::variable("a".to_string()), Expression::variable("b".to_string())),
+            Expression::fraction(Expression::variable("b".to_string()), Expression::variable("a".to_string())),
         )
         .simplify()
         .equal(&Expression::Number(1)));
 
         // a/b * c/d
         assert!(Expression::multiplication(
-            Expression::fraction(Expression::Variable('a'), Expression::Variable('b')),
-            Expression::fraction(Expression::Variable('c'), Expression::Variable('d')),
+            Expression::fraction(Expression::variable("a".to_string()), Expression::variable("b".to_string())),
+            Expression::fraction(Expression::variable("c".to_string()), Expression::variable("d".to_string())),
         )
         .simplify()
         .equal(&Expression::fraction(
-            Expression::multiplication(Expression::Variable('a'), Expression::Variable('c')),
-            Expression::multiplication(Expression::Variable('b'), Expression::Variable('d')),
+            Expression::multiplication(Expression::variable("a".to_string()), Expression::variable("c".to_string())),
+            Expression::multiplication(Expression::variable("b".to_string()), Expression::variable("d".to_string())),
         )));
 
         // e * e
@@ -1403,22 +1423,22 @@ mod test_simplify {
         assert!(Expression::multiplication(
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Sin,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Sin,
-                vec![Expression::Variable('y')]
+                vec![Expression::variable("y".to_string())]
             )),
         )
         .simplify()
         .equal(&Expression::multiplication(
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Sin,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Sin,
-                vec![Expression::Variable('y')]
+                vec![Expression::variable("y".to_string())]
             )),
         )));
 
@@ -1426,18 +1446,18 @@ mod test_simplify {
         assert!(Expression::multiplication(
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Sin,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Sin,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
         )
         .simplify()
         .equal(&Expression::exponentiation(
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Sin,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
             Expression::Number(2)
         )));
@@ -1448,12 +1468,12 @@ mod test_simplify {
                 Expression::Number(2),
                 Expression::function(FunctionType::Predefined(
                     PredefinedFunction::Sin,
-                    vec![Expression::Variable('x')]
+                    vec![Expression::variable("x".to_string())]
                 ))
             ),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Sin,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
         )
         .simplify()
@@ -1462,7 +1482,7 @@ mod test_simplify {
             Expression::exponentiation(
                 Expression::function(FunctionType::Predefined(
                     PredefinedFunction::Sin,
-                    vec![Expression::Variable('x')]
+                    vec![Expression::variable("x".to_string())]
                 )),
                 Expression::Number(2)
             )
@@ -1472,22 +1492,22 @@ mod test_simplify {
         assert!(Expression::multiplication(
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Ln,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Ln,
-                vec![Expression::Variable('y')]
+                vec![Expression::variable("y".to_string())]
             )),
         )
         .simplify()
         .equal(&Expression::multiplication(
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Ln,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Ln,
-                vec![Expression::Variable('y')]
+                vec![Expression::variable("y".to_string())]
             )),
         )));
 
@@ -1495,18 +1515,18 @@ mod test_simplify {
         assert!(Expression::multiplication(
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Ln,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Ln,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
         )
         .simplify()
         .equal(&Expression::exponentiation(
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Ln,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             )),
             Expression::Number(2)
         )));
@@ -1515,18 +1535,18 @@ mod test_simplify {
         assert!(Expression::multiplication(
             Expression::function(FunctionType::UserDefined(
                 'a'.to_string(),
-                vec![Expression::Variable('f')]
+                vec![Expression::variable("f".to_string())]
             )),
             Expression::function(FunctionType::UserDefined(
                 'a'.to_string(),
-                vec![Expression::Variable('f')]
+                vec![Expression::variable("f".to_string())]
             )),
         )
         .simplify()
         .equal(&Expression::exponentiation(
             Expression::function(FunctionType::UserDefined(
                 'a'.to_string(),
-                vec![Expression::Variable('f')]
+                vec![Expression::variable("f".to_string())]
             )),
             Expression::Number(2)
         )));
@@ -1535,22 +1555,22 @@ mod test_simplify {
         assert!(Expression::multiplication(
             Expression::function(FunctionType::UserDefined(
                 'a'.to_string(),
-                vec![Expression::Variable('f')]
+                vec![Expression::variable("f".to_string())]
             )),
             Expression::function(FunctionType::UserDefined(
                 'a'.to_string(),
-                vec![Expression::Variable('g')]
+                vec![Expression::variable("g".to_string())]
             )),
         )
         .simplify()
         .equal(&Expression::multiplication(
             Expression::function(FunctionType::UserDefined(
                 'a'.to_string(),
-                vec![Expression::Variable('f')]
+                vec![Expression::variable("f".to_string())]
             )),
             Expression::function(FunctionType::UserDefined(
                 'a'.to_string(),
-                vec![Expression::Variable('g')]
+                vec![Expression::variable("g".to_string())]
             )),
         )));
     }
@@ -1591,39 +1611,39 @@ mod test_simplify {
 
         // x^x
         assert!(
-            Expression::exponentiation(Expression::Variable('x'), Expression::Variable('x'))
+            Expression::exponentiation(Expression::variable("x".to_string()), Expression::variable("x".to_string()))
                 .simplify()
                 .equal(&Expression::exponentiation(
-                    Expression::Variable('x'),
-                    Expression::Variable('x')
+                    Expression::variable("x".to_string()),
+                    Expression::variable("x".to_string())
                 ))
         );
 
         // x^log(x, y)
         assert!(Expression::exponentiation(
-            Expression::Variable('x'),
+            Expression::variable("x".to_string()),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Log,
-                vec![Expression::Variable('x'), Expression::Variable('y')]
+                vec![Expression::variable("x".to_string()), Expression::variable("y".to_string())]
             ))
         )
         .simplify()
-        .equal(&Expression::Variable('y'),));
+        .equal(&Expression::variable("y".to_string()),));
 
         // x^log(y, x)
         assert!(Expression::exponentiation(
-            Expression::Variable('x'),
+            Expression::variable("x".to_string()),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Log,
-                vec![Expression::Variable('y'), Expression::Variable('x')]
+                vec![Expression::variable("y".to_string()), Expression::variable("x".to_string())]
             ))
         )
         .simplify()
         .equal(&Expression::exponentiation(
-            Expression::Variable('x'),
+            Expression::variable("x".to_string()),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Log,
-                vec![Expression::Variable('y'), Expression::Variable('x')]
+                vec![Expression::variable("y".to_string()), Expression::variable("x".to_string())]
             ))
         )));
 
@@ -1632,11 +1652,11 @@ mod test_simplify {
             Expression::Constant(ConstantKind::E),
             Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Ln,
-                vec![Expression::Variable('x')]
+                vec![Expression::variable("x".to_string())]
             ))
         )
         .simplify()
-        .equal(&Expression::Variable('x')));
+        .equal(&Expression::variable("x".to_string())));
 
         // (1/2)^2
         assert!(Expression::exponentiation(
@@ -1651,103 +1671,103 @@ mod test_simplify {
 
         // (ab)^2
         assert!(Expression::exponentiation(
-            Expression::multiplication(Expression::Variable('a'), Expression::Variable('b'),),
+            Expression::multiplication(Expression::variable("a".to_string()), Expression::variable("b".to_string()),),
             Expression::Number(2)
         )
         .simplify()
         .equal(&Expression::multiplication(
-            Expression::exponentiation(Expression::Variable('a'), Expression::Number(2),),
-            Expression::exponentiation(Expression::Variable('b'), Expression::Number(2),),
+            Expression::exponentiation(Expression::variable("a".to_string()), Expression::Number(2),),
+            Expression::exponentiation(Expression::variable("b".to_string()), Expression::Number(2),),
         )));
 
         // (a+b)^2
         assert!(Expression::exponentiation(
-            Expression::addition(Expression::Variable('a'), Expression::Variable('b'),),
+            Expression::addition(Expression::variable("a".to_string()), Expression::variable("b".to_string()),),
             Expression::Number(2)
         )
         .simplify()
         .equal(&Expression::addition_from_vec(vec![
-            Expression::exponentiation(Expression::Variable('a'), Expression::Number(2),),
+            Expression::exponentiation(Expression::variable("a".to_string()), Expression::Number(2),),
             Expression::multiplication_from_vec(vec![
                 Expression::Number(2),
-                Expression::Variable('a'),
-                Expression::Variable('b'),
+                Expression::variable("a".to_string()),
+                Expression::variable("b".to_string()),
             ]),
-            Expression::exponentiation(Expression::Variable('b'), Expression::Number(2),),
+            Expression::exponentiation(Expression::variable("b".to_string()), Expression::Number(2),),
         ])));
 
         // (a-b)^2
         assert!(Expression::exponentiation(
             Expression::addition(
-                Expression::Variable('a'),
-                Expression::negation(Expression::Variable('b'),),
+                Expression::variable("a".to_string()),
+                Expression::negation(Expression::variable("b".to_string()),),
             ),
             Expression::Number(2)
         )
         .simplify()
         .equal(&Expression::addition_from_vec(vec![
-            Expression::exponentiation(Expression::Variable('a'), Expression::Number(2),),
+            Expression::exponentiation(Expression::variable("a".to_string()), Expression::Number(2),),
             Expression::multiplication_from_vec(vec![
                 Expression::Number(2),
-                Expression::Variable('a'),
-                Expression::negation(Expression::Variable('b')),
+                Expression::variable("a".to_string()),
+                Expression::negation(Expression::variable("b".to_string())),
             ]),
             Expression::exponentiation(
-                Expression::negation(Expression::Variable('b')),
+                Expression::negation(Expression::variable("b".to_string())),
                 Expression::Number(2),
             ),
         ])));
 
         // (a+b)^3
         assert!(Expression::exponentiation(
-            Expression::addition(Expression::Variable('a'), Expression::Variable('b'),),
+            Expression::addition(Expression::variable("a".to_string()), Expression::variable("b".to_string()),),
             Expression::Number(3)
         )
         .simplify()
         .equal(&Expression::addition_from_vec(vec![
-            Expression::exponentiation(Expression::Variable('a'), Expression::Number(3),),
+            Expression::exponentiation(Expression::variable("a".to_string()), Expression::Number(3),),
             Expression::multiplication_from_vec(vec![
                 Expression::Number(3),
-                Expression::exponentiation(Expression::Variable('a'), Expression::Number(2),),
-                Expression::Variable('b'),
+                Expression::exponentiation(Expression::variable("a".to_string()), Expression::Number(2),),
+                Expression::variable("b".to_string()),
             ]),
             Expression::multiplication_from_vec(vec![
                 Expression::Number(3),
-                Expression::exponentiation(Expression::Variable('b'), Expression::Number(2),),
-                Expression::Variable('a'),
+                Expression::exponentiation(Expression::variable("b".to_string()), Expression::Number(2),),
+                Expression::variable("a".to_string()),
             ]),
-            Expression::exponentiation(Expression::Variable('b'), Expression::Number(3),),
+            Expression::exponentiation(Expression::variable("b".to_string()), Expression::Number(3),),
         ])));
 
         //(a+b+c)^2
         assert!(Expression::exponentiation(
             Expression::addition_from_vec(vec![
-                Expression::Variable('a'),
-                Expression::Variable('b'),
-                Expression::Variable('c'),
+                Expression::variable("a".to_string()),
+                Expression::variable("b".to_string()),
+                Expression::variable("c".to_string()),
             ]),
             Expression::Number(2)
         )
         .simplify()
         .equal(&Expression::addition_from_vec(vec![
-            Expression::exponentiation(Expression::Variable('a'), Expression::Number(2),),
+            Expression::exponentiation(Expression::variable("a".to_string()), Expression::Number(2),),
             Expression::multiplication_from_vec(vec![
                 Expression::Number(2),
-                Expression::Variable('a'),
-                Expression::Variable('b'),
+                Expression::variable("a".to_string()),
+                Expression::variable("b".to_string()),
             ]),
             Expression::multiplication_from_vec(vec![
                 Expression::Number(2),
-                Expression::Variable('a'),
-                Expression::Variable('c'),
+                Expression::variable("a".to_string()),
+                Expression::variable("c".to_string()),
             ]),
-            Expression::exponentiation(Expression::Variable('b'), Expression::Number(2),),
+            Expression::exponentiation(Expression::variable("b".to_string()), Expression::Number(2),),
             Expression::multiplication_from_vec(vec![
                 Expression::Number(2),
-                Expression::Variable('b'),
-                Expression::Variable('c'),
+                Expression::variable("b".to_string()),
+                Expression::variable("c".to_string()),
             ]),
-            Expression::exponentiation(Expression::Variable('c'), Expression::Number(2),),
+            Expression::exponentiation(Expression::variable("c".to_string()), Expression::Number(2),),
         ])));
     }
 
@@ -1793,137 +1813,137 @@ mod test_simplify {
 
         // -a/b
         assert!(Expression::fraction(
-            Expression::negation(Expression::Variable('a')),
-            Expression::Variable('b')
+            Expression::negation(Expression::variable("a".to_string())),
+            Expression::variable("b".to_string())
         )
         .simplify()
         .equal(&Expression::fraction(
-            Expression::negation(Expression::Variable('a')),
-            Expression::Variable('b')
+            Expression::negation(Expression::variable("a".to_string())),
+            Expression::variable("b".to_string())
         )));
 
         // a/-b
         assert!(Expression::fraction(
-            Expression::Variable('a'),
-            Expression::negation(Expression::Variable('b'))
+            Expression::variable("a".to_string()),
+            Expression::negation(Expression::variable("b".to_string()))
         )
         .simplify()
         .equal(&Expression::fraction(
-            Expression::negation(Expression::Variable('a')),
-            Expression::Variable('b')
+            Expression::negation(Expression::variable("a".to_string())),
+            Expression::variable("b".to_string())
         )));
 
         // -a/-b
         assert!(Expression::fraction(
-            Expression::negation(Expression::Variable('a')),
-            Expression::negation(Expression::Variable('b'))
+            Expression::negation(Expression::variable("a".to_string())),
+            Expression::negation(Expression::variable("b".to_string()))
         )
         .simplify()
         .equal(&Expression::fraction(
-            Expression::Variable('a'),
-            Expression::Variable('b')
+            Expression::variable("a".to_string()),
+            Expression::variable("b".to_string())
         )));
 
         //a/a^n
         assert!(Expression::fraction(
-            Expression::Variable('a'),
-            Expression::exponentiation(Expression::Variable('a'), Expression::Variable('n'))
+            Expression::variable("a".to_string()),
+            Expression::exponentiation(Expression::variable("a".to_string()), Expression::variable("n".to_string()))
         )
         .simplify()
         .equal(&Expression::fraction(
             Expression::Number(1),
             Expression::exponentiation(
-                Expression::Variable('a'),
-                Expression::addition(Expression::Variable('n'), Expression::Number(-1))
+                Expression::variable("a".to_string()),
+                Expression::addition(Expression::variable("n".to_string()), Expression::Number(-1))
             )
         )));
 
         // a^2/a
         assert!(Expression::fraction(
-            Expression::exponentiation(Expression::Variable('a'), Expression::Number(2)),
-            Expression::Variable('a')
+            Expression::exponentiation(Expression::variable("a".to_string()), Expression::Number(2)),
+            Expression::variable("a".to_string())
         )
         .simplify()
-        .equal(&Expression::Variable('a')));
+        .equal(&Expression::variable("a".to_string())));
 
         // a^2/a^3
         assert!(Expression::fraction(
-            Expression::exponentiation(Expression::Variable('a'), Expression::Number(2)),
-            Expression::exponentiation(Expression::Variable('a'), Expression::Number(3))
+            Expression::exponentiation(Expression::variable("a".to_string()), Expression::Number(2)),
+            Expression::exponentiation(Expression::variable("a".to_string()), Expression::Number(3))
         )
         .simplify()
         .equal(&Expression::fraction(
             Expression::Number(1),
-            Expression::Variable('a')
+            Expression::variable("a".to_string())
         )));
 
         // 2^n/2
         assert!(Expression::fraction(
-            Expression::exponentiation(Expression::Number(2), Expression::Variable('n')),
+            Expression::exponentiation(Expression::Number(2), Expression::variable("n".to_string())),
             Expression::Number(2)
         )
         .simplify()
         .equal(&Expression::exponentiation(
             Expression::Number(2),
-            Expression::addition(Expression::Variable('n'), Expression::Number(-1))
+            Expression::addition(Expression::variable("n".to_string()), Expression::Number(-1))
         )));
 
         // 2 / 2^n
         assert!(Expression::fraction(
             Expression::Number(2),
-            Expression::exponentiation(Expression::Number(2), Expression::Variable('n'))
+            Expression::exponentiation(Expression::Number(2), Expression::variable("n".to_string()))
         )
         .simplify()
         .equal(&Expression::fraction(
             Expression::Number(1),
             Expression::exponentiation(
                 Expression::Number(2),
-                Expression::addition(Expression::Variable('n'), Expression::Number(-1))
+                Expression::addition(Expression::variable("n".to_string()), Expression::Number(-1))
             )
         )));
 
         // 4a / 2
         assert!(Expression::fraction(
-            Expression::multiplication(Expression::Number(4), Expression::Variable('a')),
+            Expression::multiplication(Expression::Number(4), Expression::variable("a".to_string())),
             Expression::Number(2)
         )
         .simplify()
         .equal(&Expression::multiplication(
             Expression::Number(2),
-            Expression::Variable('a')
+            Expression::variable("a".to_string())
         )));
 
         // 4a / 2b
         assert!(Expression::fraction(
-            Expression::multiplication(Expression::Number(4), Expression::Variable('a')),
-            Expression::multiplication(Expression::Number(2), Expression::Variable('b'))
+            Expression::multiplication(Expression::Number(4), Expression::variable("a".to_string())),
+            Expression::multiplication(Expression::Number(2), Expression::variable("b".to_string()))
         )
         .simplify()
         .equal(&Expression::fraction(
-            Expression::multiplication(Expression::Number(2), Expression::Variable('a')),
-            Expression::Variable('b')
+            Expression::multiplication(Expression::Number(2), Expression::variable("a".to_string())),
+            Expression::variable("b".to_string())
         )));
 
         // (12a + 6)/(24a^2)
         assert!(Expression::fraction(
             Expression::addition(
-                Expression::multiplication(Expression::Number(12), Expression::Variable('a')),
+                Expression::multiplication(Expression::Number(12), Expression::variable("a".to_string())),
                 Expression::Number(6)
             ),
             Expression::multiplication(
                 Expression::Number(24),
-                Expression::exponentiation(Expression::Variable('a'), Expression::Number(2))
+                Expression::exponentiation(Expression::variable("a".to_string()), Expression::Number(2))
             )
         )
         .simplify()
         .equal(&Expression::fraction(
             Expression::addition(
                 Expression::Number(1),
-                Expression::multiplication(Expression::Number(2), Expression::Variable('a'))
+                Expression::multiplication(Expression::Number(2), Expression::variable("a".to_string()))
             ),
             Expression::multiplication(
                 Expression::Number(4),
-                Expression::exponentiation(Expression::Variable('a'), Expression::Number(2))
+                Expression::exponentiation(Expression::variable("a".to_string()), Expression::Number(2))
             )
         )));
 
@@ -1931,71 +1951,71 @@ mod test_simplify {
         assert!(Expression::fraction(
             Expression::addition_from_vec(vec![
                 Expression::multiplication(
-                    Expression::multiplication(Expression::Number(18), Expression::Variable('y')),
-                    Expression::exponentiation(Expression::Variable('x'), Expression::Number(2))
+                    Expression::multiplication(Expression::Number(18), Expression::variable("y".to_string())),
+                    Expression::exponentiation(Expression::variable("x".to_string()), Expression::Number(2))
                 ),
                 Expression::multiplication(
-                    Expression::multiplication(Expression::Number(3), Expression::Variable('x')),
-                    Expression::Variable('y')
+                    Expression::multiplication(Expression::Number(3), Expression::variable("x".to_string())),
+                    Expression::variable("y".to_string())
                 ),
                 Expression::multiplication(
-                    Expression::multiplication(Expression::Number(9), Expression::Variable('x')),
-                    Expression::exponentiation(Expression::Variable('y'), Expression::Number(2))
+                    Expression::multiplication(Expression::Number(9), Expression::variable("x".to_string())),
+                    Expression::exponentiation(Expression::variable("y".to_string()), Expression::Number(2))
                 ),
             ]),
             Expression::multiplication(
-                Expression::multiplication(Expression::Number(6), Expression::Variable('y')),
-                Expression::exponentiation(Expression::Variable('x'), Expression::Number(2))
+                Expression::multiplication(Expression::Number(6), Expression::variable("y".to_string())),
+                Expression::exponentiation(Expression::variable("x".to_string()), Expression::Number(2))
             )
         )
         .simplify()
         .equal(&Expression::fraction(
             Expression::addition_from_vec(vec![
-                Expression::multiplication(Expression::Number(3), Expression::Variable('y')),
+                Expression::multiplication(Expression::Number(3), Expression::variable("y".to_string())),
                 Expression::Number(1),
-                Expression::multiplication(Expression::Number(6), Expression::Variable('x')),
+                Expression::multiplication(Expression::Number(6), Expression::variable("x".to_string())),
             ]),
-            Expression::multiplication(Expression::Number(2), Expression::Variable('x'))
+            Expression::multiplication(Expression::Number(2), Expression::variable("x".to_string()))
         )));
 
         // (a/b)/(c/d)
         assert!(Expression::fraction(
-            Expression::fraction(Expression::Variable('a'), Expression::Variable('b'),),
-            Expression::fraction(Expression::Variable('c'), Expression::Variable('d'),),
+            Expression::fraction(Expression::variable("a".to_string()), Expression::variable("b".to_string()),),
+            Expression::fraction(Expression::variable("c".to_string()), Expression::variable("d".to_string()),),
         )
         .simplify()
         .equal(&Expression::fraction(
-            Expression::multiplication(Expression::Variable('a'), Expression::Variable('d'),),
-            Expression::multiplication(Expression::Variable('b'), Expression::Variable('c'),),
+            Expression::multiplication(Expression::variable("a".to_string()), Expression::variable("d".to_string()),),
+            Expression::multiplication(Expression::variable("b".to_string()), Expression::variable("c".to_string()),),
         )));
 
         Expression::fraction(
-            Expression::fraction(Expression::Variable('a'), Expression::Variable('b')),
-            Expression::Variable('c'),
+            Expression::fraction(Expression::variable("a".to_string()), Expression::variable("b".to_string())),
+            Expression::variable("c".to_string()),
         )
         .simplify()
         .print_tree(None);
 
         // (a/b)/c
         assert!(Expression::fraction(
-            Expression::fraction(Expression::Variable('a'), Expression::Variable('b'),),
-            Expression::Variable('c'),
+            Expression::fraction(Expression::variable("a".to_string()), Expression::variable("b".to_string()),),
+            Expression::variable("c".to_string()),
         )
         .simplify()
         .equal(&Expression::fraction(
-            Expression::Variable('a'),
-            Expression::multiplication(Expression::Variable('b'), Expression::Variable('c'),),
+            Expression::variable("a".to_string()),
+            Expression::multiplication(Expression::variable("b".to_string()), Expression::variable("c".to_string()),),
         )));
 
         // a/(b/c)
         assert!(Expression::fraction(
-            Expression::Variable('a'),
-            Expression::fraction(Expression::Variable('b'), Expression::Variable('c'),),
+            Expression::variable("a".to_string()),
+            Expression::fraction(Expression::variable("b".to_string()), Expression::variable("c".to_string()),),
         )
         .simplify()
         .equal(&Expression::fraction(
-            Expression::multiplication(Expression::Variable('a'), Expression::Variable('c'),),
-            Expression::Variable('b'),
+            Expression::multiplication(Expression::variable("a".to_string()), Expression::variable("c".to_string()),),
+            Expression::variable("b".to_string()),
         )));
     }
 

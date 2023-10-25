@@ -321,14 +321,14 @@ impl Parser {
             self.next_token();
             let var = text.chars().last().unwrap();
             components.push(self.parse_binary_expression(
-                Some(Expression::Variable(var)),
+                Some(Expression::variable(var.to_string())),
                 BinaryOperatorKind::Multiplication.precedence(),
             ));
             text.pop();
             self.previous_token();
-            components.extend(text.chars().map(Expression::Variable));
+            components.extend(text.chars().map(|var| Expression::variable(var.to_string())));
         } else {
-            components.extend(text.chars().map(Expression::Variable));
+            components.extend(text.chars().map(|var| Expression::variable(var.to_string())));
         }
 
         if components.len() == 1 {
@@ -732,27 +732,27 @@ mod tests_parser {
 
     #[test]
     fn variables() {
-        verify_parser("x", Statement::Simplify(Expression::Variable('x')));
+        verify_parser("x", Statement::Simplify(Expression::variable("x".to_string())));
         verify_parser(
             "x+2",
             Statement::Simplify(Expression::addition(
-                Expression::Variable('x'),
+                Expression::variable("x".to_string()),
                 Expression::Number(2),
             )),
         );
         verify_parser(
             "x+2y",
             Statement::Simplify(Expression::addition(
-                Expression::Variable('x'),
-                Expression::multiplication(Expression::Number(2), Expression::Variable('y')),
+                Expression::variable("x".to_string()),
+                Expression::multiplication(Expression::Number(2), Expression::variable("y".to_string())),
             )),
         );
         verify_parser(
             "x+2y+3",
             Statement::Simplify(Expression::addition(
                 Expression::addition(
-                    Expression::Variable('x'),
-                    Expression::multiplication(Expression::Number(2), Expression::Variable('y')),
+                    Expression::variable("x".to_string()),
+                    Expression::multiplication(Expression::Number(2), Expression::variable("y".to_string())),
                 ),
                 Expression::Number(3),
             )),
@@ -761,10 +761,10 @@ mod tests_parser {
             "x+2y+3z",
             Statement::Simplify(Expression::addition(
                 Expression::addition(
-                    Expression::Variable('x'),
-                    Expression::multiplication(Expression::Number(2), Expression::Variable('y')),
+                    Expression::variable("x".to_string()),
+                    Expression::multiplication(Expression::Number(2), Expression::variable("y".to_string())),
                 ),
-                Expression::multiplication(Expression::Number(3), Expression::Variable('z')),
+                Expression::multiplication(Expression::Number(3), Expression::variable("z".to_string())),
             )),
         );
     }
@@ -825,7 +825,7 @@ mod tests_parser {
                         Expression::Number(2),
                     )],
                 )),
-                Expression::Variable('b'),
+                Expression::variable("b".to_string()),
             )),
         );
 
@@ -834,7 +834,7 @@ mod tests_parser {
             "a(x)",
             Statement::Simplify(Expression::function(FunctionType::UserDefined(
                 "a".to_string(),
-                vec![Expression::Variable('x')],
+                vec![Expression::variable("x".to_string())],
             ))),
         );
 
@@ -844,9 +844,9 @@ mod tests_parser {
             Statement::Simplify(Expression::multiplication(
                 Expression::function(FunctionType::UserDefined(
                     "b".to_string(),
-                    vec![Expression::Variable('x'), Expression::Variable('r')],
+                    vec![Expression::variable("x".to_string()), Expression::variable("r".to_string())],
                 )),
-                Expression::Variable('a'),
+                Expression::variable("a".to_string()),
             )),
         );
 
@@ -857,13 +857,13 @@ mod tests_parser {
                 Expression::multiplication(
                     Expression::function(FunctionType::UserDefined(
                         "b".to_string(),
-                        vec![Expression::Variable('x'), Expression::Variable('r')],
+                        vec![Expression::variable("x".to_string()), Expression::variable("r".to_string())],
                     )),
-                    Expression::Variable('a'),
+                    Expression::variable("a".to_string()),
                 ),
                 Expression::function(FunctionType::UserDefined(
                     "b".to_string(),
-                    vec![Expression::Variable('x'), Expression::Variable('t')],
+                    vec![Expression::variable("x".to_string()), Expression::variable("t".to_string())],
                 )),
             )),
         );

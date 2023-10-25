@@ -180,7 +180,7 @@ impl Fraction {
                                 match (&expr_expo.exponent, &expr_expo_2.exponent) {
                                     (Expression::Number(_), _) | (_, Expression::Number(_)) => true,
                                     (Expression::Variable(var), expr)
-                                    | (expr, Expression::Variable(var)) => expr.contain_var(*var),
+                                    | (expr, Expression::Variable(var)) => expr.contain_var(var),
                                     _ => expr_expo.exponent.equal(&expr_expo_2.exponent),
                                 }
                             } else {
@@ -204,7 +204,7 @@ impl Fraction {
                                             (
                                                 vec![],
                                                 vec![ExpressionExponent::new(
-                                                    Expression::Variable(*var),
+                                                    Expression::Variable(var.clone()),
                                                     Expression::Number(1),
                                                 )],
                                             ),
