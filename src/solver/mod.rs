@@ -1,7 +1,7 @@
 mod singleveriable;
 
 use crate::{
-    ast::{equality::Equality, Expression, Statement, varibale::Variable},
+    ast::{equality::Equality, Expression, Statement, varibale::Variable, Expr},
     diagnostic::Diagnostics,
     solver::singleveriable::solve_one_var_multiple_occurence,
 };
@@ -30,7 +30,7 @@ pub fn solve(mut expression: Expression, variable: Option<Variable>) -> Vec<Expr
         if let Expression::Equality(equality) = expression {
             all_to_left_side(*equality)
         } else {
-            Equality::new(expression, Expression::Number(0))
+            Equality::new(expression, Expression::number(0))
         },
         variable,
     )
@@ -45,7 +45,7 @@ fn all_to_left_side(mut equality: Equality) -> Equality {
         )
         .simplify(),
     );
-    equality.replace_right_side(Expression::Number(0));
+    equality.replace_right_side(Expression::number(0));
     equality
 }
 
@@ -110,28 +110,28 @@ mod test_solver {
         // 2x + 3 = 0
         let expression = Expression::Equality(Box::new(Equality::new(
             Expression::addition(
-                Expression::multiplication(Expression::Number(2), Expression::variable("x".to_string())),
-                Expression::Number(3),
+                Expression::multiplication(Expression::number(2), Expression::variable("x".to_string())),
+                Expression::number(3),
             ),
-            Expression::Number(0),
+            Expression::number(0),
         )));
 
         let result = solve(expression, Some(Variable::new("x".to_string())));
 
         assert!(result[0].equal(&Expression::equality(
             Expression::variable("x".to_string()),
-            Expression::fraction(Expression::Number(-3), Expression::Number(2))
+            Expression::fraction(Expression::number(-3), Expression::number(2))
         )));
 
         // 2x + 3 = 4x + 5
         let expression = Expression::Equality(Box::new(Equality::new(
             Expression::addition(
-                Expression::multiplication(Expression::Number(2), Expression::variable("x".to_string())),
-                Expression::Number(3),
+                Expression::multiplication(Expression::number(2), Expression::variable("x".to_string())),
+                Expression::number(3),
             ),
             Expression::addition(
-                Expression::multiplication(Expression::Number(4), Expression::variable("x".to_string())),
-                Expression::Number(5),
+                Expression::multiplication(Expression::number(4), Expression::variable("x".to_string())),
+                Expression::number(5),
             ),
         )));
 
@@ -139,7 +139,7 @@ mod test_solver {
 
         assert!(result[0].equal(&Expression::equality(
             Expression::variable("x".to_string()),
-            Expression::Number(-1)
+            Expression::number(-1)
         )));
 
         // sqrt(x - 8) = 9
@@ -148,36 +148,36 @@ mod test_solver {
                 PredefinedFunction::Sqrt,
                 vec![Expression::addition(
                     Expression::variable("x".to_string()),
-                    Expression::Number(-8),
+                    Expression::number(-8),
                 )],
             )),
-            Expression::Number(9),
+            Expression::number(9),
         )));
 
         let result = solve(expression, Some(Variable::new("x".to_string())));
 
         assert!(result[0].equal(&Expression::equality(
             Expression::variable("x".to_string()),
-            Expression::Number(89)
+            Expression::number(89)
         )));
 
         // x^2 + 2x + 1 = 0
         let expression = Expression::equality(
             Expression::addition(
                 Expression::addition(
-                    Expression::exponentiation(Expression::variable("x".to_string()), Expression::Number(2)),
-                    Expression::multiplication(Expression::Number(2), Expression::variable("x".to_string())),
+                    Expression::exponentiation(Expression::variable("x".to_string()), Expression::number(2)),
+                    Expression::multiplication(Expression::number(2), Expression::variable("x".to_string())),
                 ),
-                Expression::Number(1),
+                Expression::number(1),
             ),
-            Expression::Number(0),
+            Expression::number(0),
         );
 
         let result = solve(expression, Some(Variable::new("x".to_string())));
 
         assert!(result[0].equal(&Expression::equality(
             Expression::variable("x".to_string()),
-            Expression::Number(-1)
+            Expression::number(-1)
         )));
 
         // ax^2 + bx + c = 0

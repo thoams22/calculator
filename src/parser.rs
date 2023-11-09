@@ -1,7 +1,8 @@
 use crate::{
     ast::{
+        constant::ConstantKind,
         function::{FunctionType, PredefinedFunction},
-        ConstantKind, Expression, Statement,
+        Expression, Statement,
     },
     diagnostic::Diagnostics,
     lexer::{Lexer, Span, Token, TokenKind},
@@ -273,11 +274,11 @@ impl Parser {
     fn parse_number_expression(&mut self) -> Expression {
         let current = self.next_token();
         match current.text.parse::<i64>() {
-            Ok(number) => Expression::Number(number),
+            Ok(number) => Expression::number(number),
             Err(_) => match current.text.parse::<f64>() {
                 Ok(_) => {
                     let (num, denom) = Self::string_to_fraction(current.text);
-                    Expression::fraction(Expression::Number(num), Expression::Number(denom))
+                    Expression::fraction(Expression::number(num), Expression::number(denom))
                 }
                 Err(_) => {
                     self.diagnostics.report_unexpected_number(&current);
@@ -317,6 +318,31 @@ impl Parser {
             components.extend(constants);
         }
 
+        // parse complex number
+        let mut text_parsed: String = String::new();
+
+        while let Some(num) = text.find("i") {
+            if num == text.len() - 1 {
+                if self.peek_token(1).kind == TokenKind::Hat {
+                    self.next_token();
+                    components.push(self.parse_binary_expression(
+                        Some(Expression::ImaginaryUnit),
+                        BinaryOperatorKind::Multiplication.precedence(),
+                    ));
+                    self.previous_token();
+                } else {
+                    components.push(Expression::ImaginaryUnit);
+                }
+            } else {
+                components.push(Expression::ImaginaryUnit);
+            }
+            text_parsed += &text[..num];
+            text = text[num + 1..].to_string();
+        }
+
+        text = text_parsed + &text;
+
+        // check if the last var as a power
         if self.peek_token(1).kind == TokenKind::Hat {
             self.next_token();
             let var = text.chars().last().unwrap();
@@ -326,18 +352,25 @@ impl Parser {
             ));
             text.pop();
             self.previous_token();
-            components.extend(text.chars().map(|var| Expression::variable(var.to_string())));
+            components.extend(
+                text.chars()
+                    .map(|var| Expression::variable(var.to_string())),
+            );
         } else {
-            components.extend(text.chars().map(|var| Expression::variable(var.to_string())));
+            components.extend(
+                text.chars()
+                    .map(|var| Expression::variable(var.to_string())),
+            );
         }
 
         if components.len() == 1 {
-            components.pop().unwrap()
+            components[0].clone()
         } else {
-            components
-                .into_iter()
-                .reduce(Expression::multiplication)
-                .unwrap()
+            // components
+            //     .into_iter()
+            //     .reduce(Expression::multiplication)
+            //     .unwrap()
+            Expression::multiplication_from_vec(components)
         }
     }
 
@@ -515,8 +548,9 @@ impl UnaryOperatorKind {
 mod tests_parser {
     use crate::{
         ast::{
+            constant::ConstantKind,
             function::{FunctionType, PredefinedFunction},
-            ConstantKind, Expression, Statement,
+            Expression, Statement,
         },
         parser::Parser,
     };
@@ -531,57 +565,57 @@ mod tests_parser {
     fn negative_number() {
         verify_parser(
             "-2",
-            Statement::Simplify(Expression::negation(Expression::Number(2))),
+            Statement::Simplify(Expression::negation(Expression::number(2))),
         );
         verify_parser(
             "--2",
             Statement::Simplify(Expression::negation(Expression::negation(
-                Expression::Number(2),
+                Expression::number(2),
             ))),
         );
         verify_parser(
             "-2 + 3",
             Statement::Simplify(Expression::addition(
-                Expression::negation(Expression::Number(2)),
-                Expression::Number(3),
+                Expression::negation(Expression::number(2)),
+                Expression::number(3),
             )),
         );
         verify_parser(
             "3-2",
             Statement::Simplify(Expression::addition(
-                Expression::Number(3),
-                Expression::negation(Expression::Number(2)),
+                Expression::number(3),
+                Expression::negation(Expression::number(2)),
             )),
         );
         verify_parser(
             "3*-2",
             Statement::Simplify(Expression::multiplication(
-                Expression::Number(3),
-                Expression::negation(Expression::Number(2)),
+                Expression::number(3),
+                Expression::negation(Expression::number(2)),
             )),
         );
         verify_parser(
             "3/-3",
             Statement::Simplify(Expression::fraction(
-                Expression::Number(3),
-                Expression::negation(Expression::Number(3)),
+                Expression::number(3),
+                Expression::negation(Expression::number(3)),
             )),
         );
         verify_parser(
             "6^-5",
             Statement::Simplify(Expression::exponentiation(
-                Expression::Number(6),
-                Expression::negation(Expression::Number(5)),
+                Expression::number(6),
+                Expression::negation(Expression::number(5)),
             )),
         );
         verify_parser(
             "3-2+1",
             Statement::Simplify(Expression::addition(
                 Expression::addition(
-                    Expression::Number(3),
-                    Expression::negation(Expression::Number(2)),
+                    Expression::number(3),
+                    Expression::negation(Expression::number(2)),
                 ),
-                Expression::Number(1),
+                Expression::number(1),
             )),
         );
     }
@@ -591,15 +625,15 @@ mod tests_parser {
         verify_parser(
             "2.5",
             Statement::Simplify(Expression::fraction(
-                Expression::Number(5),
-                Expression::Number(2),
+                Expression::number(5),
+                Expression::number(2),
             )),
         );
         verify_parser(
             "45.76",
             Statement::Simplify(Expression::fraction(
-                Expression::Number(1144),
-                Expression::Number(25),
+                Expression::number(1144),
+                Expression::number(25),
             )),
         );
         verify_parser("45..443", Statement::Simplify(Expression::Error));
@@ -610,42 +644,42 @@ mod tests_parser {
         verify_parser(
             "(2+4)",
             Statement::Simplify(Expression::addition(
-                Expression::Number(2),
-                Expression::Number(4),
+                Expression::number(2),
+                Expression::number(4),
             )),
         );
         verify_parser(
             "2+(4+2)",
             Statement::Simplify(Expression::addition(
-                Expression::Number(2),
-                Expression::addition(Expression::Number(4), Expression::Number(2)),
+                Expression::number(2),
+                Expression::addition(Expression::number(4), Expression::number(2)),
             )),
         );
         verify_parser(
             "2+(4+2)+3",
             Statement::Simplify(Expression::addition(
                 Expression::addition(
-                    Expression::Number(2),
-                    Expression::addition(Expression::Number(4), Expression::Number(2)),
+                    Expression::number(2),
+                    Expression::addition(Expression::number(4), Expression::number(2)),
                 ),
-                Expression::Number(3),
+                Expression::number(3),
             )),
         );
         verify_parser(
             "((2/5)(4+1))3",
             Statement::Simplify(Expression::multiplication(
                 Expression::multiplication(
-                    Expression::fraction(Expression::Number(2), Expression::Number(5)),
-                    Expression::addition(Expression::Number(4), Expression::Number(1)),
+                    Expression::fraction(Expression::number(2), Expression::number(5)),
+                    Expression::addition(Expression::number(4), Expression::number(1)),
                 ),
-                Expression::Number(3),
+                Expression::number(3),
             )),
         );
         verify_parser(
             "-(2+4)",
             Statement::Simplify(Expression::negation(Expression::addition(
-                Expression::Number(2),
-                Expression::Number(4),
+                Expression::number(2),
+                Expression::number(4),
             ))),
         );
     }
@@ -655,34 +689,34 @@ mod tests_parser {
         verify_parser(
             "3^2^3",
             Statement::Simplify(Expression::exponentiation(
-                Expression::Number(3),
-                Expression::exponentiation(Expression::Number(2), Expression::Number(3)),
+                Expression::number(3),
+                Expression::exponentiation(Expression::number(2), Expression::number(3)),
             )),
         );
         verify_parser(
             "3^2^3^2",
             Statement::Simplify(Expression::exponentiation(
-                Expression::Number(3),
+                Expression::number(3),
                 Expression::exponentiation(
-                    Expression::Number(2),
-                    Expression::exponentiation(Expression::Number(3), Expression::Number(2)),
+                    Expression::number(2),
+                    Expression::exponentiation(Expression::number(3), Expression::number(2)),
                 ),
             )),
         );
         verify_parser(
             "(3^2)^-8",
             Statement::Simplify(Expression::exponentiation(
-                Expression::exponentiation(Expression::Number(3), Expression::Number(2)),
-                Expression::negation(Expression::Number(8)),
+                Expression::exponentiation(Expression::number(3), Expression::number(2)),
+                Expression::negation(Expression::number(8)),
             )),
         );
         verify_parser(
             "3^-2^3",
             Statement::Simplify(Expression::exponentiation(
-                Expression::Number(3),
+                Expression::number(3),
                 Expression::exponentiation(
-                    Expression::negation(Expression::Number(2)),
-                    Expression::Number(3),
+                    Expression::negation(Expression::number(2)),
+                    Expression::number(3),
                 ),
             )),
         );
@@ -693,25 +727,25 @@ mod tests_parser {
         verify_parser(
             "2(3)",
             Statement::Simplify(Expression::multiplication(
-                Expression::Number(2),
-                Expression::Number(3),
+                Expression::number(2),
+                Expression::number(3),
             )),
         );
         verify_parser(
             "2(3+2)",
             Statement::Simplify(Expression::multiplication(
-                Expression::Number(2),
-                Expression::addition(Expression::Number(3), Expression::Number(2)),
+                Expression::number(2),
+                Expression::addition(Expression::number(3), Expression::number(2)),
             )),
         );
         verify_parser(
             "2(3+2)3",
             Statement::Simplify(Expression::multiplication(
                 Expression::multiplication(
-                    Expression::Number(2),
-                    Expression::addition(Expression::Number(3), Expression::Number(2)),
+                    Expression::number(2),
+                    Expression::addition(Expression::number(3), Expression::number(2)),
                 ),
-                Expression::Number(3),
+                Expression::number(3),
             )),
         );
 
@@ -720,31 +754,37 @@ mod tests_parser {
             Statement::Simplify(Expression::multiplication(
                 Expression::multiplication(
                     Expression::multiplication(
-                        Expression::Number(2),
-                        Expression::addition(Expression::Number(3), Expression::Number(2)),
+                        Expression::number(2),
+                        Expression::addition(Expression::number(3), Expression::number(2)),
                     ),
-                    Expression::Number(3),
+                    Expression::number(3),
                 ),
-                Expression::addition(Expression::Number(2), Expression::Number(1)),
+                Expression::addition(Expression::number(2), Expression::number(1)),
             )),
         );
     }
 
     #[test]
     fn variables() {
-        verify_parser("x", Statement::Simplify(Expression::variable("x".to_string())));
+        verify_parser(
+            "x",
+            Statement::Simplify(Expression::variable("x".to_string())),
+        );
         verify_parser(
             "x+2",
             Statement::Simplify(Expression::addition(
                 Expression::variable("x".to_string()),
-                Expression::Number(2),
+                Expression::number(2),
             )),
         );
         verify_parser(
             "x+2y",
             Statement::Simplify(Expression::addition(
                 Expression::variable("x".to_string()),
-                Expression::multiplication(Expression::Number(2), Expression::variable("y".to_string())),
+                Expression::multiplication(
+                    Expression::number(2),
+                    Expression::variable("y".to_string()),
+                ),
             )),
         );
         verify_parser(
@@ -752,9 +792,12 @@ mod tests_parser {
             Statement::Simplify(Expression::addition(
                 Expression::addition(
                     Expression::variable("x".to_string()),
-                    Expression::multiplication(Expression::Number(2), Expression::variable("y".to_string())),
+                    Expression::multiplication(
+                        Expression::number(2),
+                        Expression::variable("y".to_string()),
+                    ),
                 ),
-                Expression::Number(3),
+                Expression::number(3),
             )),
         );
         verify_parser(
@@ -762,9 +805,15 @@ mod tests_parser {
             Statement::Simplify(Expression::addition(
                 Expression::addition(
                     Expression::variable("x".to_string()),
-                    Expression::multiplication(Expression::Number(2), Expression::variable("y".to_string())),
+                    Expression::multiplication(
+                        Expression::number(2),
+                        Expression::variable("y".to_string()),
+                    ),
                 ),
-                Expression::multiplication(Expression::Number(3), Expression::variable("z".to_string())),
+                Expression::multiplication(
+                    Expression::number(3),
+                    Expression::variable("z".to_string()),
+                ),
             )),
         );
     }
@@ -775,7 +824,7 @@ mod tests_parser {
             "ln(2)",
             Statement::Simplify(Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Ln,
-                vec![Expression::Number(2)],
+                vec![Expression::number(2)],
             ))),
         );
 
@@ -784,8 +833,8 @@ mod tests_parser {
             Statement::Simplify(Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Ln,
                 vec![Expression::addition(
-                    Expression::Number(2),
-                    Expression::Number(3),
+                    Expression::number(2),
+                    Expression::number(3),
                 )],
             ))),
         );
@@ -796,8 +845,8 @@ mod tests_parser {
             Statement::Simplify(Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Sin,
                 vec![Expression::addition(
-                    Expression::Number(2),
-                    Expression::Number(3),
+                    Expression::number(2),
+                    Expression::number(3),
                 )],
             ))),
         );
@@ -808,8 +857,8 @@ mod tests_parser {
             Statement::Simplify(Expression::function(FunctionType::Predefined(
                 PredefinedFunction::Asin,
                 vec![Expression::addition(
-                    Expression::Number(2),
-                    Expression::Number(3),
+                    Expression::number(2),
+                    Expression::number(3),
                 )],
             ))),
         );
@@ -822,7 +871,7 @@ mod tests_parser {
                     PredefinedFunction::Sin,
                     vec![Expression::fraction(
                         Expression::Constant(ConstantKind::Pi),
-                        Expression::Number(2),
+                        Expression::number(2),
                     )],
                 )),
                 Expression::variable("b".to_string()),
@@ -844,7 +893,10 @@ mod tests_parser {
             Statement::Simplify(Expression::multiplication(
                 Expression::function(FunctionType::UserDefined(
                     "b".to_string(),
-                    vec![Expression::variable("x".to_string()), Expression::variable("r".to_string())],
+                    vec![
+                        Expression::variable("x".to_string()),
+                        Expression::variable("r".to_string()),
+                    ],
                 )),
                 Expression::variable("a".to_string()),
             )),
@@ -857,13 +909,19 @@ mod tests_parser {
                 Expression::multiplication(
                     Expression::function(FunctionType::UserDefined(
                         "b".to_string(),
-                        vec![Expression::variable("x".to_string()), Expression::variable("r".to_string())],
+                        vec![
+                            Expression::variable("x".to_string()),
+                            Expression::variable("r".to_string()),
+                        ],
                     )),
                     Expression::variable("a".to_string()),
                 ),
                 Expression::function(FunctionType::UserDefined(
                     "b".to_string(),
-                    vec![Expression::variable("x".to_string()), Expression::variable("t".to_string())],
+                    vec![
+                        Expression::variable("x".to_string()),
+                        Expression::variable("t".to_string()),
+                    ],
                 )),
             )),
         );
@@ -875,8 +933,8 @@ mod tests_parser {
         verify_parser(
             "2=2",
             Statement::Solve(Expression::equality(
-                Expression::Number(2),
-                Expression::Number(2),
+                Expression::number(2),
+                Expression::number(2),
             )),
         );
 
@@ -884,8 +942,8 @@ mod tests_parser {
         verify_parser(
             "2+3=2",
             Statement::Solve(Expression::equality(
-                Expression::addition(Expression::Number(2), Expression::Number(3)),
-                Expression::Number(2),
+                Expression::addition(Expression::number(2), Expression::number(3)),
+                Expression::number(2),
             )),
         );
 
@@ -894,16 +952,73 @@ mod tests_parser {
             "2ln(4) = e^(-pi)",
             Statement::Solve(Expression::equality(
                 Expression::multiplication(
-                    Expression::Number(2),
+                    Expression::number(2),
                     Expression::function(FunctionType::Predefined(
                         PredefinedFunction::Ln,
-                        vec![Expression::Number(4)],
+                        vec![Expression::number(4)],
                     )),
                 ),
                 Expression::exponentiation(
                     Expression::Constant(ConstantKind::E),
                     Expression::negation(Expression::Constant(ConstantKind::Pi)),
                 ),
+            )),
+        );
+    }
+
+    #[test]
+    fn complex() {
+        // a + bi
+        verify_parser(
+            "a + bi",
+            Statement::Simplify(Expression::addition(
+                Expression::variable("a".to_string()),
+                Expression::multiplication(
+                    Expression::ImaginaryUnit,
+                    Expression::variable("b".to_string()),
+                ),
+            )),
+        );
+
+        // a + bi + c
+        verify_parser(
+            "a + bi + c",
+            Statement::Simplify(Expression::addition(
+                Expression::addition(
+                    Expression::variable("a".to_string()),
+                    Expression::multiplication(
+                        Expression::ImaginaryUnit,
+                        Expression::variable("b".to_string()),
+                    ),
+                ),
+                Expression::variable("c".to_string()),
+            )),
+        );
+
+        // 2 + 3i
+        verify_parser(
+            "2 + 3i",
+            Statement::Simplify(Expression::addition(
+                Expression::number(2),
+                Expression::multiplication(Expression::number(3), Expression::ImaginaryUnit),
+            )),
+        );
+
+        // 2 + 0i
+        verify_parser(
+            "2 + 0i",
+            Statement::Simplify(Expression::addition(
+                Expression::number(2),
+                Expression::multiplication(Expression::number(0), Expression::ImaginaryUnit),
+            )),
+        );
+
+        // 4 + i^2
+        verify_parser(
+            "4 + i^2",
+            Statement::Simplify(Expression::addition(
+                Expression::number(4),
+                Expression::exponentiation(Expression::ImaginaryUnit, Expression::number(2)),
             )),
         );
     }

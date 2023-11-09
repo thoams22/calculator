@@ -5,6 +5,7 @@
 - Number : i64.
 - Variables : char.
 - Constant : $e, \pi$
+- ImaginaryUnit : $i$
 
 ## Operators
 
@@ -14,6 +15,7 @@
 - Exponentiation: "a ^ b" if "b" is compose of multiple [[Syntax#Elementary|elementary]] they must be in parenthesis.
 - Fraction : "a/b" if "a" and/or "b" is compose of multiple [[Syntax#Elementary|elementary]] they must be in parenthesis.
 - Equality : "a = b"
+
 ## Functions
 
 - Predefined : 
