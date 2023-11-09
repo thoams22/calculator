@@ -1,8 +1,10 @@
+use std::collections::HashMap;
+
 use crate::ast::Expression;
 
-use super::addition::Addition;
+use super::{addition::Addition, Expr, State, varibale::Variable};
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Hash, Eq)]
 pub struct Multiplication {
     pub sub_expr: Vec<Expression>,
     pub simplified: bool,
@@ -25,8 +27,8 @@ impl Multiplication {
     }
 }
 
-impl Multiplication {
-    pub fn equal(&self, other: &Multiplication) -> bool {
+impl Expr for Multiplication {
+    fn equal(&self, other: &Multiplication) -> bool {
         if self.sub_expr.len() != other.sub_expr.len() {
             return false;
         }
@@ -35,7 +37,9 @@ impl Multiplication {
         let mut index: Vec<bool> = vec![false; len * 2];
         'i: for i in 0..len {
             for j in 0..len {
-                if !(index[i] || index[j + len]) && self.sub_expr[i].equal(other.sub_expr.get(j).unwrap()) {
+                if !(index[i] || index[j + len])
+                    && self.sub_expr[i].equal(other.sub_expr.get(j).unwrap())
+                {
                     index[i] = true;
                     index[j + len] = true;
                     continue 'i;
@@ -46,16 +50,7 @@ impl Multiplication {
         return index.iter().all(|&x| x);
     }
 
-    pub fn iter(&self) -> MultiplicationIter {
-        MultiplicationIter {
-            addition: self,
-            index: 0,
-        }
-    }
-}
-
-impl Multiplication {
-    pub fn simplify(mut self) -> Expression {
+    fn simplify(mut self) -> Expression {
         if self.simplified {
             return Expression::Multiplication(Box::new(self));
         }
@@ -70,6 +65,119 @@ impl Multiplication {
             .multiplication_number() // Mult(8, 3, 2, 4) -> 192, Mult(a, 1) -> a , Mult(a, 0) -> 0
     }
 
+    fn contain_vars(&self) -> Option<std::collections::HashMap<super::varibale::Variable, usize>> {
+        let mut map: HashMap<Variable, usize> = HashMap::new();
+        for expr in self.sub_expr.iter() {
+            if let Some(mut sub_map) = expr.contain_vars() {
+                for (key, value) in sub_map.iter_mut() {
+                    if let Some(occurence) = map.get_mut(key) {
+                        *occurence += *value;
+                    } else {
+                        map.insert(key.clone(), *value);
+                    }
+                }
+            }
+        }
+        if map.is_empty() {
+            None
+        } else {
+            Some(map)
+        }    }
+
+    fn contain_var(&self, variable: &super::varibale::Variable) -> bool {
+        self.sub_expr.iter().any(|expr| expr.contain_var(variable))
+    }
+
+    fn get_order(&self) -> i64 {
+        self.sub_expr
+        .iter()
+        .map(|expr| expr.get_order())
+        .max()
+        .unwrap_or(0)
+    }
+
+    fn print_tree(&self, span: Option<&str>) {
+        let current_span = span.unwrap_or("");
+        let new_span = current_span.to_string() + "   ";
+        println!("{}Multiplication :", current_span);
+        for expr in self.sub_expr.iter() {
+            print!("{}", current_span);
+            expr.print_tree(Some(&new_span));
+        }
+    }
+
+    fn calc_pos(
+        &self,
+        position: &mut Vec<(String, (i8, i8))>,
+        prev_state: super::State,
+        memoized: &mut std::collections::HashMap<Expression, (i8, i8, i8)>,
+    ) {
+        let mut max_height = 1;
+        let mut max_height_index = 0;
+        for (i, expr) in self.sub_expr.iter().enumerate() {
+            let height = expr.get_height(memoized);
+            if height > max_height {
+                max_height = height;
+                max_height_index = i;
+            }
+        }
+
+        let len = position.len();
+        let mut position_clone = position.clone();
+
+        self.sub_expr[max_height_index].calc_pos(&mut position_clone, prev_state, memoized);
+
+        let mut pos_y = position_clone[len].1 .0;
+        let mut pos_x = prev_state.get_pos_x();
+
+        for (i, expr) in self.sub_expr.iter().enumerate() {
+            if i > 0 {
+                position.push((" * ".to_string(), (pos_y, pos_x)));
+                pos_x += 3;
+            }
+            if let Expression::Addition(add) = expr {
+                add.make_parenthesis(&mut pos_y, &mut pos_x, position, false, memoized);
+                expr.calc_pos(position, State::Same(pos_y, pos_x), memoized);
+                pos_x += expr.get_length(memoized);
+                add.make_parenthesis(&mut pos_y, &mut pos_x, position, true, memoized);
+            } else {
+                expr.calc_pos(position, State::Same(pos_y, pos_x), memoized);
+                pos_x += expr.get_length(memoized);
+            }
+        }
+    }
+
+    fn get_length(&self, memoized: &mut std::collections::HashMap<Expression, (i8, i8, i8)>) -> i8 {
+        let mut length = 0;
+        for expr in self.sub_expr.iter() {
+            if let Expression::Addition(_) = expr {
+                length += expr.get_length(memoized) + 5; // add parenthesis
+            } else {
+                length += expr.get_length(memoized) + 3;
+            }
+        }
+        length -= 3;
+        length
+    }
+
+    fn get_height(&self, memoized: &mut std::collections::HashMap<Expression, (i8, i8, i8)>) -> i8 {
+        let mut max_height = 0;
+        for expr in &self.sub_expr {
+            max_height = max_height.max(expr.get_height(memoized));
+        }
+        max_height
+    }
+
+    fn get_above_height(&self, memoized: &mut std::collections::HashMap<Expression, (i8, i8, i8)>) -> i8 {
+        let mut max_height = 0;
+        for expr in &self.sub_expr {
+            max_height = max_height.max(expr.get_above_height(memoized));
+        }
+        max_height
+    }
+}
+
+impl Multiplication {
     fn regroup_nested_multiplication(mut self) -> Multiplication {
         let mut i = 0;
         while i < self.sub_expr.len() {
@@ -138,7 +246,7 @@ impl Multiplication {
                 self.sub_expr.swap_remove(i);
 
                 return Multiplication::new(
-                    Expression::Number(1),
+                    Expression::number(1),
                     Expression::fraction(
                         Expression::multiplication(
                             Expression::multiplication_from_vec(self.sub_expr.clone()),
@@ -148,8 +256,7 @@ impl Multiplication {
                     )
                     .simplify(),
                 );
-            }
-            else {
+            } else {
                 i += 1;
             }
         }
@@ -172,7 +279,7 @@ impl Multiplication {
                 }
                 _ => (
                     expr.clone(),
-                    Addition::from_vec(vec![Expression::Number(1)]),
+                    Addition::from_vec(vec![Expression::number(1)]),
                 ),
             };
 
@@ -192,7 +299,7 @@ impl Multiplication {
                     }
                     _ => (
                         second_expr.clone(),
-                        Addition::from_vec(vec![Expression::Number(1)]),
+                        Addition::from_vec(vec![Expression::number(1)]),
                     ),
                 };
 
@@ -201,7 +308,7 @@ impl Multiplication {
                     if let Expression::Exponentiation(expo) = &second_expr {
                         exponent.sub_expr.push(expo.get_exponent());
                     } else {
-                        exponent.sub_expr.push(Expression::Number(1));
+                        exponent.sub_expr.push(Expression::number(1));
                     }
                     self.sub_expr.swap_remove(j);
                 } else {
@@ -235,17 +342,17 @@ impl Multiplication {
         for expr in self.sub_expr.drain(..) {
             match expr {
                 Expression::Number(num) => {
-                    if num == 0 {
-                        return Expression::Number(0);
+                    if num.sub_expr == 0 {
+                        return Expression::number(0);
                     }
-                    sum *= num;
+                    sum *= num.sub_expr;
                 }
                 _ => non_numbers.push(expr),
             }
         }
 
         if sum != 1 {
-            non_numbers.push(Expression::Number(sum));
+            non_numbers.push(Expression::number(sum));
         }
 
         self.simplified = true;
@@ -253,9 +360,9 @@ impl Multiplication {
         match non_numbers.len() {
             0 => {
                 if sum == 1 {
-                    return Expression::Number(1);
+                    return Expression::number(1);
                 }
-                Expression::Number(0)
+                Expression::number(0)
             }
             1 => non_numbers.pop().unwrap(),
             _ => Expression::Multiplication(Box::new(Self::from_vec(non_numbers).order())),
@@ -265,6 +372,13 @@ impl Multiplication {
     fn order(mut self) -> Multiplication {
         self.sub_expr.sort_by_key(|a| a.get_order());
         self
+    }
+
+    pub fn iter(&self) -> MultiplicationIter {
+        MultiplicationIter {
+            addition: self,
+            index: 0,
+        }
     }
 }
 

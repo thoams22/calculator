@@ -1,14 +1,16 @@
+use std::collections::HashMap;
+
 use crate::ast::Expression;
 
 use super::{
     function::{FunctionType, PredefinedFunction},
     multiplication::Multiplication,
-    ConstantKind,
+    ConstantKind, Expr, State, varibale::Variable,
 };
 
 use crate::utils::multinomial_expansion;
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Hash, Eq)]
 pub struct Exponentiation {
     pub sub_expr: [Expression; 2],
     pub simplified: bool,
@@ -20,12 +22,6 @@ impl Exponentiation {
             sub_expr: [base, exponent],
             simplified: false,
         }
-    }
-}
-
-impl Exponentiation {
-    pub fn equal(&self, other: &Exponentiation) -> bool {
-        self.sub_expr[0].equal(&other.sub_expr[0]) && self.sub_expr[1].equal(&other.sub_expr[1])
     }
 
     pub fn get_base(&self) -> Expression {
@@ -45,8 +41,12 @@ impl Exponentiation {
     }
 }
 
-impl Exponentiation {
-    pub fn simplify(mut self) -> Expression {
+impl Expr for Exponentiation {
+    fn equal(&self, other: &Exponentiation) -> bool {
+        self.sub_expr[0].equal(&other.sub_expr[0]) && self.sub_expr[1].equal(&other.sub_expr[1])
+    }
+
+    fn simplify(mut self) -> Expression {
         if self.simplified {
             return Expression::Exponentiation(Box::new(self));
         }
@@ -58,7 +58,16 @@ impl Exponentiation {
 
         match (self.get_base(), self.get_exponent()) {
             (Expression::Number(num1), Expression::Number(num2)) => {
-                Expression::Number(num1.pow((num2).try_into().unwrap()))
+                Expression::number(num1.sub_expr.pow((num2.sub_expr).try_into().unwrap()))
+            }
+            (Expression::ImaginaryUnit, Expression::Number(num)) => {                
+                match num.sub_expr % 4 {
+                    0 => Expression::number(1),
+                    1 => Expression::ImaginaryUnit,
+                    2 => Expression::number(-1),
+                    3 => Expression::negation(Expression::ImaginaryUnit),
+                    _ => Expression::Error,
+                }
             }
             (_, Expression::Function(fun)) => self.simplify_exponent_logarithm(&fun),
             // (a*b)^c = a^c * b^c
@@ -72,8 +81,8 @@ impl Exponentiation {
                 Expression::Multiplication(Box::new(distributed_exponent)).simplify()
             }
             (Expression::Addition(add), Expression::Number(num)) => {
-                if num.is_positive() {
-                    multinomial_expansion(num, *add)
+                if num.sub_expr.is_positive() {
+                    multinomial_expansion(num.sub_expr, *add)
                 } else {
                     self.simplify_exponent_one_zero()
                 }
@@ -94,6 +103,96 @@ impl Exponentiation {
         }
     }
 
+    fn contain_vars(&self) -> Option<std::collections::HashMap<super::varibale::Variable, usize>> {
+        let mut map: HashMap<Variable, usize> = HashMap::new();
+        for expr in self.sub_expr.iter() {
+            if let Some(mut sub_map) = expr.contain_vars() {
+                for (key, value) in sub_map.iter_mut() {
+                    if let Some(occurence) = map.get_mut(key) {
+                        *occurence += *value;
+                    } else {
+                        map.insert(key.clone(), *value);
+                    }
+                }
+            }
+        }
+        if map.is_empty() {
+            None
+        } else {
+            Some(map)
+        }
+    }
+
+    fn contain_var(&self, variable: &super::varibale::Variable) -> bool {
+        self.sub_expr.iter().any(|expr| expr.contain_var(variable))
+    }
+
+    fn get_order(&self) -> i64 {
+        if let Expression::Number(num) = self.get_exponent() {
+            num.sub_expr
+        } else {
+            2
+        }
+    }
+
+    fn print_tree(&self, span: Option<&str>) {
+        let current_span = span.unwrap_or("");
+        let new_span = current_span.to_string() + "   ";
+        println!("{}Exponentiation :", current_span);
+        print!("{}", current_span);
+        self.sub_expr[0].print_tree(Some(&new_span));
+        print!("{}", current_span);
+        self.sub_expr[1].print_tree(Some(&new_span));
+    }
+
+    fn calc_pos(
+        &self,
+        position: &mut Vec<(String, (i8, i8))>,
+        prev_state: super::State,
+        memoized: &mut std::collections::HashMap<Expression, (i8, i8, i8)>,
+    ) {
+        match prev_state {
+            State::Over(mut pos_y, mut pos_x) | State::Same(mut pos_y, mut pos_x) => {
+                self.get_base()
+                    .calc_pos(position, State::Same(pos_y, pos_x), memoized);
+                pos_y += self.get_base().get_above_height(memoized);
+                pos_x += self.get_base().get_length(memoized);
+                self.get_exponent()
+                    .calc_pos(position, State::Over(pos_y, pos_x), memoized);
+            }
+            State::Under(mut pos_y, mut pos_x) => {
+                pos_y -= self.get_exponent().get_height(memoized) - 1
+                    + self.get_base().get_above_height(memoized);
+                self.get_base()
+                    .calc_pos(position, State::Same(pos_y, pos_x), memoized);
+                pos_x += self.get_base().get_length(memoized);
+                self.get_exponent().calc_pos(
+                    position,
+                    State::Over(pos_y + self.get_base().get_above_height(memoized), pos_x),
+                    memoized,
+                );
+            }
+        }
+    }
+
+    fn get_length(&self, memoized: &mut std::collections::HashMap<Expression, (i8, i8, i8)>) -> i8 {
+        self.get_base().get_length(memoized) + self.get_exponent().get_length(memoized)
+    }
+
+    fn get_height(&self, memoized: &mut std::collections::HashMap<Expression, (i8, i8, i8)>) -> i8 {
+        self.get_base().get_height(memoized) + self.get_exponent().get_height(memoized)
+    }
+
+    fn get_above_height(
+        &self,
+        memoized: &mut std::collections::HashMap<Expression, (i8, i8, i8)>,
+    ) -> i8 {
+        self.get_base().get_above_height(memoized)
+        + self.get_exponent().get_height(memoized)
+    }
+}
+
+impl Exponentiation {
     // e^ln(x) = x
     // a^log(a, x) = x
     pub fn simplify_exponent_logarithm(self, function: &FunctionType) -> Expression {
@@ -122,9 +221,9 @@ impl Exponentiation {
     fn simplify_exponent_one_zero(self) -> Expression {
         // println!("{:?}", self);
         if let Expression::Number(num) = self.get_exponent() {
-            if num == 0 {
-                return Expression::Number(1);
-            } else if num == 1 {
+            if num.sub_expr == 0 {
+                return Expression::number(1);
+            } else if num.sub_expr == 1 {
                 return self.sub_expr[0].clone();
             } else {
                 return Expression::Exponentiation(Box::new(self));

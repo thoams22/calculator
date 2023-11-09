@@ -43,6 +43,10 @@ impl Diagnostics {
         self.error(format!("Expected <Number: i64>, found <{}>", token.text))
     }
 
+    pub fn report_expected_var_or_equality(&mut self, expr: Expression) {
+        self.error(format!("Expected <Variable> OR <Equality>, found <{}>", expr))
+    }
+
     pub fn report_unexpected_var_for_solve(&mut self, var: Expression) {
         self.error(format!("Ask to solve for '{var}' but '{var}' not in the expression"))
     }

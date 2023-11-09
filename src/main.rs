@@ -1,21 +1,3 @@
-// TODO next functionality
-
-// System équation
-// Polynome
-// How to make derivate and integral
-// Differential equations
-// Complex numbers
-
-// laplace fourier and Z transform
-// statistics
-// probability
-// base conversion
-// boolean algebra
-// factorial => Gamma function
-// matrix
-
-// Big num so not limited by i128
-
 use std::io;
 
 use crate::{ast::Expression, parser::Parser, solver::solve, utils::substitute};
