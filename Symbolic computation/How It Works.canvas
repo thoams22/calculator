@@ -1,0 +1,33 @@
+{
+	"nodes":[
+		{"id":"ec436d88a566823d","type":"group","x":-440,"y":1340,"width":665,"height":100,"label":"Return of Program"},
+		{"type":"text","text":"Return the simplified version","id":"c5e273383725d0a3","x":-640,"y":280,"width":250,"height":60},
+		{"type":"text","text":"Return the solution","id":"6dd7af7db46bab18","x":-420,"y":1360,"width":250,"height":60},
+		{"type":"text","text":"Return that we do not support the problem yet","id":"91b53907dbfa85d5","x":-45,"y":1360,"width":250,"height":60},
+		{"type":"text","text":"Take text as input","id":"6b940a49c5f5affe","x":-440,"y":-700,"width":250,"height":50},
+		{"id":"f6cc8adaf32ca5a6","x":-434,"y":-560,"width":239,"height":100,"type":"text","text":"Lexe the string and convert each char or group of char in tokens"},
+		{"id":"8d7f38a63bf34eaf","x":-440,"y":-360,"width":250,"height":120,"type":"text","text":"Parse the tokens into Statement and expressions to represent order of operation"},
+		{"type":"text","text":"Simplify the Expression using basic operator propreties and rewrite for lisiblity.","id":"4a68eefb70ee706e","x":-440,"y":-140,"width":250,"height":120},
+		{"type":"text","text":"Isolate the variable","id":"a219a281a26d9964","x":-690,"y":720,"width":250,"height":50},
+		{"id":"b5bd1fd4eeed7772","type":"text","text":"Discriminant","x":-240,"y":820,"width":250,"height":50},
+		{"id":"e070b88611a382a9","type":"text","text":"3 options","x":540,"y":845,"width":140,"height":60},
+		{"id":"1b611322e8cbffaf","x":-440,"y":80,"width":250,"height":100,"type":"text","text":"Does different things depending the statement type"},
+		{"type":"text","text":"Try to solve it","id":"5c2ce59b97b11b38","x":-280,"y":285,"width":250,"height":50}
+	],
+	"edges":[
+		{"id":"cf1ef207c0b5b253","fromNode":"5c2ce59b97b11b38","fromSide":"bottom","toNode":"a219a281a26d9964","toSide":"top","label":"If one variable AND one occurrence"},
+		{"id":"0d1fb358d5031447","fromNode":"a219a281a26d9964","fromSide":"bottom","toNode":"6dd7af7db46bab18","toSide":"top","color":"4"},
+		{"id":"e2ea8bd3f082e995","fromNode":"b5bd1fd4eeed7772","fromSide":"bottom","toNode":"6dd7af7db46bab18","toSide":"top","color":"4"},
+		{"id":"73117432d9bd4315","fromNode":"5c2ce59b97b11b38","fromSide":"bottom","toNode":"e070b88611a382a9","toSide":"left","label":"Multiple variables"},
+		{"id":"e0d4026d9b5f856a","fromNode":"e070b88611a382a9","fromSide":"bottom","toNode":"91b53907dbfa85d5","toSide":"right","color":"1","label":"The variable specified is not in the expression."},
+		{"id":"97755f2eb8017e03","fromNode":"e070b88611a382a9","fromSide":"right","toNode":"1b611322e8cbffaf","toSide":"top","color":"4","label":"No variable scpecified \n- Try variable x\n- Choose one of the variable randomly"},
+		{"id":"56365beac868a9e4","fromNode":"6b940a49c5f5affe","fromSide":"bottom","toNode":"f6cc8adaf32ca5a6","toSide":"top","label":"Lexer"},
+		{"id":"7b2ec9fc9aa1a6bb","fromNode":"f6cc8adaf32ca5a6","fromSide":"bottom","toNode":"8d7f38a63bf34eaf","toSide":"top","label":"Parser"},
+		{"id":"48f7907d67c1cbfc","fromNode":"8d7f38a63bf34eaf","fromSide":"bottom","toNode":"4a68eefb70ee706e","toSide":"top","label":"Simplify()"},
+		{"id":"0c26cb1ad1286000","fromNode":"4a68eefb70ee706e","fromSide":"bottom","toNode":"1b611322e8cbffaf","toSide":"top","label":"Solve"},
+		{"id":"f3912bbce99799a7","fromNode":"1b611322e8cbffaf","fromSide":"bottom","toNode":"c5e273383725d0a3","toSide":"top"},
+		{"id":"dcba762d08b6ab36","fromNode":"1b611322e8cbffaf","fromSide":"bottom","toNode":"5c2ce59b97b11b38","toSide":"top"},
+		{"id":"7f0902be2f3b20fb","fromNode":"5c2ce59b97b11b38","fromSide":"bottom","toNode":"b5bd1fd4eeed7772","toSide":"top","label":"Second degree polynomials"},
+		{"id":"3547baccc38ce279","fromNode":"e070b88611a382a9","fromSide":"left","toNode":"5c2ce59b97b11b38","toSide":"top","color":"4","label":"The variable is specified"}
+	]
+}
