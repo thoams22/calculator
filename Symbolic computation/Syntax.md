@@ -3,7 +3,7 @@
 ## Elementary
 
 - Number : i64.
-- Variables : char.
+- Variables : String.
 - Constant : $e, \pi$
 - ImaginaryUnit : $i$
 
@@ -25,6 +25,10 @@
 
 ```functions that can be defined in the CLI and be reused after they can take arguments of the types Variable. The functions names are variable followed by a parenthesis, the number of arguments must be constant or an Error will be raised. Ex: a(x) is different than a(x, y) and only one can be defined.
 ```
+
+## Complex
+It store only the $a, b$ for now.
+$a + bi$
 
 ## Expression
 
@@ -49,7 +53,7 @@ the three step will continue until there is a program error, a panic or "exit" i
 ## Lexer 
 The lexer will convert the string in tokens and raise Error when a char is not supported.
 
-The current char supported are : [a-z] [A-Z] [0-9] , ( ) + - = * ^ end of line wihtespace 
+The current char supported are : [a-z] [A-Z] [0-9] , ( ) + - = * ^ end of line whitespace 
 ## Parser 
 
 If the lexer does not raise any error.
@@ -66,7 +70,7 @@ Not in order of implementation.
 - More equations solvable.
 - Derivatives
 - Integrals
-- Complex
+- Complex (multiple form)
 - Factories
 - Saves functions in 
 - Factorial/Gamma function
