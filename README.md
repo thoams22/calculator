@@ -7,3 +7,12 @@ In the symbolic computation folder there is a begning of documentation/how it wo
 
 # Inspiration
 Here are the things that i took as inspiration to do this project.
+
+<https://en.wikipedia.org/wiki/Shunting_yard_algorithm>
+<https://www.youtube.com/watch?v=4m7ubrdbWQU&list=TLPQMTMwNjIwMjNugMfQwb6g1Q&index=4>
+<https://www.numworks.com/>
+<https://www.pure.ed.ac.uk/ws/portalfiles/portal/413486/Solving_Symbolic_Equations_with_PRESS.pdf>
+<https://www.youtube.com/watch?v=F_VDz-fU4Ao&list=PLLQgf3TcCLzHH_nznjAF2bABWvQnYyLo-&index=1>
+<https://github.com/symengine/symengine/tree/master>
+<https://citeseerx.ist.psu.edu/document?repid=rep1&type=pdf&doi=9f2d956ee98c3ad48bb460137e000df6a7343db9>
+<https://github.com/typst/typst/tree/main>
