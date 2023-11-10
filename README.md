@@ -22,4 +22,4 @@ A CAS in C++ (symsengine) : <https://github.com/symengine/symengine/tree/master>
 
 Theory on how to implement a CAS : <https://citeseerx.ist.psu.edu/document?repid=rep1&type=pdf&doi=9f2d956ee98c3ad48bb460137e000df6a7343db9>
 
-The codeBasee helped me understand how a lexer/perser works, Also maybe export a step by stab solution using the pdf render : <https://github.com/typst/typst/tree/main>
+The codeBasee helped me understand how a lexer/perser works, Also maybe export a step by step solution using the pdf render : <https://github.com/typst/typst/tree/main>
