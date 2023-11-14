@@ -123,6 +123,22 @@ mod test_solver {
             Expression::fraction(Expression::number(-3), Expression::number(2))
         )));
 
+        // x^2 + 1 = 0
+        let expression = Expression::Equality(Box::new(Equality::new(
+            Expression::addition(
+                Expression::exponentiation(Expression::variable(String::from("x")), Expression::number(2)),
+                Expression::number(1),
+            ),
+            Expression::number(0),
+        )));
+
+        let result = solve(expression, Some(Variable::new(String::from("x"))));
+
+        assert!(result[0].equal(&Expression::equality(
+            Expression::variable("x".to_string()),
+            Expression::complex(Expression::number(0), Expression::number(1))
+        )));
+
         // 2x + 3 = 4x + 5
         let expression = Expression::Equality(Box::new(Equality::new(
             Expression::addition(

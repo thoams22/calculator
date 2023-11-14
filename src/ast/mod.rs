@@ -13,6 +13,9 @@ pub mod varibale;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
+use crate::solver::solve;
+use crate::utils::substitute;
+
 use self::addition::Addition;
 use self::complex::Complex;
 use self::constant::ConstantKind;
@@ -109,6 +112,19 @@ impl Statement {
                 }
             }
             println!();
+        }
+    }
+
+    pub fn solve(&self) -> Vec<Expression>
+    {
+        match self.clone() {
+            Statement::Simplify(expression) => vec![expression.simplify()],
+            Statement::Solve(expression) => solve(expression, None),
+            Statement::SolveFor(expression, variable) => solve(expression, Some(variable)),
+            Statement::Replace(expression, equality) => {
+                solve(substitute(expression, &equality), None)
+            }
+            Statement::Error => vec![Expression::Error],
         }
     }
 }
@@ -437,9 +453,7 @@ impl Expression {
             Expression::Negation(neg) => neg.calc_pos(position, prev_state, memoized),
             Expression::Function(func) => func.calc_pos(position, prev_state, memoized),
             Expression::Complex(complex) => complex.calc_pos(position, prev_state, memoized),
-            Expression::ImaginaryUnit => {
-                position.push(("i".into(), prev_state.get_pos()))
-            }
+            Expression::ImaginaryUnit => position.push(("i".into(), prev_state.get_pos())),
 
             Expression::Error => {
                 println!("Error");

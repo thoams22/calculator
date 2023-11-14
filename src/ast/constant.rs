@@ -6,6 +6,7 @@ use super::{Expr, Expression};
 pub enum ConstantKind {
     E,
     Pi,
+    Tau,
 }
 
 impl ConstantKind {
@@ -13,7 +14,20 @@ impl ConstantKind {
         match self {
             ConstantKind::E => "e",
             ConstantKind::Pi => "pi",
+            ConstantKind::Tau => "tau",
         }
+    }
+
+    pub fn as_f64(&self) -> f64 {
+        match self {
+            ConstantKind::E => std::f64::consts::E,
+            ConstantKind::Pi => std::f64::consts::PI,
+            ConstantKind::Tau => std::f64::consts::TAU,
+        }
+    }
+
+    pub fn get_all() -> Vec<ConstantKind> {
+        vec![ConstantKind::E, ConstantKind::Pi, ConstantKind::Tau]
     }
 }
 impl Expr for ConstantKind {
@@ -68,6 +82,7 @@ impl Display for ConstantKind {
         match self {
             ConstantKind::E => write!(f, "e"),
             ConstantKind::Pi => write!(f, "pi"),
+            ConstantKind::Tau => write!(f, "tau"),
         }
     }
 }

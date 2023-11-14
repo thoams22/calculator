@@ -44,18 +44,11 @@ fn main() {
                 println!("Before");
                 statement.print_console();
 
-                let result = match statement {
-                    ast::Statement::Simplify(expression) => vec![expression.simplify()],
-                    ast::Statement::Solve(expression) => solve(expression, None),
-                    ast::Statement::SolveFor(expression, variable) => solve(expression, Some(variable)),
-                    ast::Statement::Replace(expression, equality) => solve(substitute(expression, &equality), None),
-                    ast::Statement::Error => vec![Expression::Error],
-                };
+                let result = statement.solve();
 
                 println!("\n");
                 println!("After:\n");
                 result.iter().for_each(|solution| {
-                    // solution.print_tree(None);
                     solution.print_console();
                 });
             }

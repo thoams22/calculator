@@ -458,8 +458,11 @@ impl Parser {
     fn parse_constant(&mut self, mut text: String) -> (String, Vec<Expression>) {
         let mut components: Vec<Expression> = Vec::new();
 
-        text = self.find_constant(text, ConstantKind::E, &mut components);
-        text = self.find_constant(text, ConstantKind::Pi, &mut components);
+        // loop to get all constants
+        for constant in ConstantKind::get_all() {
+            text = self.find_constant(text, constant, &mut components);
+        }
+
         (text, components)
     }
 

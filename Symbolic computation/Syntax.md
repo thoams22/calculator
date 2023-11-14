@@ -71,6 +71,9 @@ Not in order of implementation.
 - Derivatives
 - Integrals
 - Complex (multiple form)
+- Domain of solution if var in solution
+- +- Solution
+- Ensemble of solution
 - Factories
 - Saves functions in 
 - Factorial/Gamma function
