@@ -1,5 +1,6 @@
 use crate::ast::{
-    addition::Addition, equality::Equality, function, multiplication::Multiplication, Expression, Expr,
+    addition::Addition, derivation, equality::Equality, function, multiplication::Multiplication,
+    Expr, Expression,
 };
 
 pub fn pascal_triangle(num: i64) {
@@ -284,7 +285,7 @@ pub fn extract_coefficient_expression_exponent(
                 expressions,
             )
         }
-        // TODO keep sign of expression 
+        // TODO keep sign of expression
         Expression::Number(num) => (
             prime_factor(num.sub_expr)
                 .iter()
@@ -458,9 +459,7 @@ pub fn substitute(expression: Expression, equality: &Equality) -> Expression {
             substitute(eq.get_left_side(), equality),
             substitute(eq.get_right_side(), equality),
         ),
-        Expression::Negation(neg) => {
-            Expression::negation(substitute(neg.sub_expr, equality))
-        }
+        Expression::Negation(neg) => Expression::negation(substitute(neg.sub_expr, equality)),
         Expression::Function(func) => match *func {
             function::FunctionType::Predefined(function, args) => {
                 return Expression::function(function::FunctionType::Predefined(function, {
@@ -485,7 +484,41 @@ pub fn substitute(expression: Expression, equality: &Equality) -> Expression {
             new_complex.set_imaginary(substitute(complex.get_imaginary(), equality));
             Expression::Complex(new_complex)
         }
+        Expression::Derivation(derivation) => {
+            let mut new_derivation = derivation.clone();
+            new_derivation.set_expression(substitute(derivation.get_expression(), equality));
+            new_derivation.set_derivation_variable(
+                if let Expression::Variable(var) = substitute(
+                    Expression::Variable(derivation.get_derivation_variable()),
+                    equality,
+                ) {
+                    var
+                } else {
+                    panic!("Trying to replace derivation variable by a type not <Variable>")
+                },
+            );
+            Expression::Derivation(new_derivation)
+        }
         Expression::Error => panic!("there should'nt be any error here"),
+    }
+}
+
+/// Check if the `expression` is a composed expression.
+/// 
+/// It does not take into a count if `expression` contains the derivation variable  
+pub fn is_chain_rule_applicable(expression: Expression) -> bool {
+    match expression {
+        Expression::Addition(_)
+        | Expression::Multiplication(_)
+        | Expression::Exponentiation(_)
+        | Expression::Fraction(_)
+        | Expression::Function(_) => true,
+        Expression::Negation(neg) => is_chain_rule_applicable(neg.sub_expr),
+        Expression::Complex(_) => todo!(),
+        Expression::Derivation(_) => todo!(),
+        Expression::Equality(_) => todo!(),
+        Expression::Error => todo!(),
+        _ => false,
     }
 }
 
@@ -507,20 +540,32 @@ mod test_utils {
         assert!(substitute(
             Expression::equality(
                 Expression::addition_from_vec(vec![
-                    Expression::exponentiation(Expression::variable("x".to_string()), Expression::number(4)),
-                    Expression::exponentiation(Expression::variable("x".to_string()), Expression::number(2)),
+                    Expression::exponentiation(
+                        Expression::variable("x".to_string()),
+                        Expression::number(4)
+                    ),
+                    Expression::exponentiation(
+                        Expression::variable("x".to_string()),
+                        Expression::number(2)
+                    ),
                     Expression::number(8)
                 ]),
                 Expression::number(0)
             ),
             &Equality::new(
-                Expression::exponentiation(Expression::variable("x".to_string()), Expression::number(2)),
+                Expression::exponentiation(
+                    Expression::variable("x".to_string()),
+                    Expression::number(2)
+                ),
                 Expression::variable("y".to_string())
             )
         )
         .equal(&Expression::equality(
             Expression::addition_from_vec(vec![
-                Expression::exponentiation(Expression::variable("y".to_string()), Expression::number(2)),
+                Expression::exponentiation(
+                    Expression::variable("y".to_string()),
+                    Expression::number(2)
+                ),
                 Expression::variable("y".to_string()),
                 Expression::number(8)
             ]),
@@ -529,10 +574,19 @@ mod test_utils {
 
         // x^4, x^2 = y^3 => y^6
         assert!(substitute(
-            Expression::exponentiation(Expression::variable("x".to_string()), Expression::number(4)),
+            Expression::exponentiation(
+                Expression::variable("x".to_string()),
+                Expression::number(4)
+            ),
             &Equality::new(
-                Expression::exponentiation(Expression::variable("x".to_string()), Expression::number(2)),
-                Expression::exponentiation(Expression::variable("y".to_string()), Expression::number(3))
+                Expression::exponentiation(
+                    Expression::variable("x".to_string()),
+                    Expression::number(2)
+                ),
+                Expression::exponentiation(
+                    Expression::variable("y".to_string()),
+                    Expression::number(3)
+                )
             )
         )
         .equal(&Expression::exponentiation(
@@ -542,10 +596,16 @@ mod test_utils {
 
         // x^2, x = y^3 => y^9
         assert!(substitute(
-            Expression::exponentiation(Expression::variable("x".to_string()), Expression::number(2)),
+            Expression::exponentiation(
+                Expression::variable("x".to_string()),
+                Expression::number(2)
+            ),
             &Equality::new(
                 Expression::variable("x".to_string()),
-                Expression::exponentiation(Expression::variable("y".to_string()), Expression::number(3))
+                Expression::exponentiation(
+                    Expression::variable("y".to_string()),
+                    Expression::number(3)
+                )
             )
         )
         .equal(&Expression::exponentiation(
@@ -555,25 +615,40 @@ mod test_utils {
 
         // x^y, x = z^y => z^y^y
         assert!(substitute(
-            Expression::exponentiation(Expression::variable("x".to_string()), Expression::variable("y".to_string())),
+            Expression::exponentiation(
+                Expression::variable("x".to_string()),
+                Expression::variable("y".to_string())
+            ),
             &Equality::new(
                 Expression::variable("x".to_string()),
-                Expression::exponentiation(Expression::variable("z".to_string()), Expression::variable("y".to_string()))
+                Expression::exponentiation(
+                    Expression::variable("z".to_string()),
+                    Expression::variable("y".to_string())
+                )
             )
         )
         .equal(&Expression::exponentiation(
             Expression::variable("z".to_string()),
-            Expression::exponentiation(Expression::variable("y".to_string()), Expression::variable("y".to_string()))
+            Expression::exponentiation(
+                Expression::variable("y".to_string()),
+                Expression::variable("y".to_string())
+            )
         )));
 
         // x^(2y), x^y = z => z^2
         assert!(substitute(
             Expression::exponentiation(
                 Expression::variable("x".to_string()),
-                Expression::multiplication(Expression::number(2), Expression::variable("y".to_string()))
+                Expression::multiplication(
+                    Expression::number(2),
+                    Expression::variable("y".to_string())
+                )
             ),
             &Equality::new(
-                Expression::exponentiation(Expression::variable("x".to_string()), Expression::variable("y".to_string())),
+                Expression::exponentiation(
+                    Expression::variable("x".to_string()),
+                    Expression::variable("y".to_string())
+                ),
                 Expression::variable("z".to_string()),
             )
         )
@@ -585,14 +660,20 @@ mod test_utils {
         // x^3 + x^(1/2), x^2 = y => y^(3/2) + y^(1/4)
         assert!(substitute(
             Expression::addition(
-                Expression::exponentiation(Expression::variable("x".to_string()), Expression::number(3)),
+                Expression::exponentiation(
+                    Expression::variable("x".to_string()),
+                    Expression::number(3)
+                ),
                 Expression::exponentiation(
                     Expression::variable("x".to_string()),
                     Expression::fraction(Expression::number(1), Expression::number(2))
                 )
             ),
             &Equality::new(
-                Expression::exponentiation(Expression::variable("x".to_string()), Expression::number(2)),
+                Expression::exponentiation(
+                    Expression::variable("x".to_string()),
+                    Expression::number(2)
+                ),
                 Expression::variable("y".to_string())
             )
         )
@@ -612,7 +693,10 @@ mod test_utils {
             Expression::addition(
                 Expression::exponentiation(
                     Expression::Constant(ConstantKind::E),
-                    Expression::multiplication(Expression::number(2), Expression::variable("x".to_string()))
+                    Expression::multiplication(
+                        Expression::number(2),
+                        Expression::variable("x".to_string())
+                    )
                 ),
                 Expression::exponentiation(
                     Expression::Constant(ConstantKind::E),
@@ -628,7 +712,10 @@ mod test_utils {
             )
         )
         .equal(&Expression::addition(
-            Expression::exponentiation(Expression::variable("y".to_string()), Expression::number(2)),
+            Expression::exponentiation(
+                Expression::variable("y".to_string()),
+                Expression::number(2)
+            ),
             Expression::variable("y".to_string())
         )));
 
@@ -664,33 +751,18 @@ mod test_utils {
     #[test]
     fn test_prime_factor() {
         // 10
-        assert_eq!(
-            vec![(2, 1), (5, 1)],
-            prime_factor(10)
-        );
+        assert_eq!(vec![(2, 1), (5, 1)], prime_factor(10));
 
         // 11
-        assert_eq!(
-            vec![(11, 1)],
-            prime_factor(11)
-        );
+        assert_eq!(vec![(11, 1)], prime_factor(11));
 
         // 169
-        assert_eq!(
-            vec![(13, 2)],
-            prime_factor(169)
-        );
+        assert_eq!(vec![(13, 2)], prime_factor(169));
 
         // -2
-        assert_eq!(
-            vec![(2, 1)],
-            prime_factor(-2)
-        );
+        assert_eq!(vec![(2, 1)], prime_factor(-2));
 
         // 4089
-        assert_eq!(
-            vec![(3, 1), (29, 1), (47, 1)],
-            prime_factor(4089)
-        );
+        assert_eq!(vec![(3, 1), (29, 1), (47, 1)], prime_factor(4089));
     }
 }

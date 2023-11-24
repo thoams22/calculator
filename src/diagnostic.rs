@@ -43,12 +43,23 @@ impl Diagnostics {
         self.error(format!("Expected <Number: i64>, found <{}>", token.text))
     }
 
+    pub fn report_expected_same_number(&mut self, num1: &Expression, num2: &Expression) {
+        self.error(format!(
+            "Expected same number, found <{}> and <{}>",
+            num1, num2
+        ))
+    }
+
     pub fn report_expected_var_or_equality(&mut self, expr: Expression) {
         self.error(format!("Expected <Variable> OR <Equality>, found <{}>", expr))
     }
 
     pub fn report_unexpected_var_for_solve(&mut self, var: Expression) {
         self.error(format!("Ask to solve for '{var}' but '{var}' not in the expression"))
+    }
+
+    pub fn report_unexpected_degree_for_derivate(&mut self, degree: Expression) {
+        self.error(format!("Unexpected degree <{}>, expected no degree", degree))
     }
 
     pub fn report_invalid_argument_count(&mut self, function: &PredefinedFunction, actual: usize) {

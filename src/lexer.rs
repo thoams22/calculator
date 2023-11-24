@@ -14,17 +14,19 @@ pub enum TokenKind {
     RightCurly,
     LeftBracket,
     RightBracket,
+
     Comma,
     Semicolon,
     Colon,
-    Equal,
     Underscore,
-
+    BackSlash,
+    
     Plus,
     Minus,
     Star,
     Slash,
     Hat,
+    Equal,
     Percent,
     Prime,
 
@@ -60,6 +62,7 @@ impl Display for TokenKind {
             TokenKind::End => write!(f, "End of file"),
             TokenKind::Error => write!(f, "Error"),
             TokenKind::NewLine => write!(f, "NewLine"),
+            TokenKind::BackSlash => write!(f, "\\"),
         }
     }
 }

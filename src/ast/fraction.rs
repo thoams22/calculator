@@ -133,6 +133,7 @@ impl Expr for Fraction {
         prev_state: super::State,
         memoized: &mut std::collections::HashMap<Expression, (i8, i8, i8)>,
     ) {
+        // used to calculate the position of the fraction bar
         let (pos_y, mut pos_x) = match prev_state {
             State::Over(pos_y, pos_x) => {
                 (pos_y + self.get_denominator().get_height(memoized), pos_x)
@@ -146,6 +147,8 @@ impl Expr for Fraction {
         let num_length = self.get_numerator().get_length(memoized);
         let denom_length = self.get_denominator().get_length(memoized);
 
+        // determines the length of the fraction bar
+        // and center the shortest part
         if denom_length < num_length {
             for i in 0..num_length {
                 position.push(("-".to_string(), (pos_y, pos_x + i)));
@@ -168,12 +171,20 @@ impl Expr for Fraction {
     }
 
     fn get_length(&self, memoized: &mut std::collections::HashMap<Expression, (i8, i8, i8)>) -> i8 {
+        //  num
+        // -----
+        // denom
+        // _____
+
         self.get_numerator()
             .get_length(memoized)
             .max(self.get_denominator().get_length(memoized))
     }
 
     fn get_height(&self, memoized: &mut std::collections::HashMap<Expression, (i8, i8, i8)>) -> i8 {
+        // num |
+        // --- |
+        // den |
         self.get_numerator().get_height(memoized) + self.get_denominator().get_height(memoized) + 1
     }
 
@@ -181,6 +192,9 @@ impl Expr for Fraction {
         &self,
         memoized: &mut std::collections::HashMap<Expression, (i8, i8, i8)>,
     ) -> i8 {
+        // num |
+        // --- |
+        // den
         self.get_numerator().get_height(memoized) + 1
     }
 }

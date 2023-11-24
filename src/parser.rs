@@ -1,3 +1,5 @@
+use std::f32::consts::E;
+
 use crate::{
     ast::{
         constant::ConstantKind,
@@ -76,6 +78,10 @@ impl Parser {
         self.peek_token(0)
     }
 
+    fn go_to_tokent(&mut self, position: usize) {
+        self.position = position;
+    }
+
     fn equal_or_create_next(&mut self, kind: TokenKind) -> Token {
         if self.current_token().kind == kind {
             self.next_token()
@@ -104,6 +110,10 @@ impl Parser {
         }
     }
 
+    fn is_equal(&mut self, kind: TokenKind) -> bool {
+        self.current_token().kind == kind
+    }
+
     pub fn parse(&mut self) -> Statement {
         let mut result = Statement::Error;
         while let Some(expr) = self.parse_type() {
@@ -111,7 +121,6 @@ impl Parser {
                 // TODO add a loop to get second equality if substitue or for later sys eq
                 self.next_token();
                 let after_comma = self.parse_expression();
-                println!("{after_comma}");
                 if let Expression::Variable(var) = after_comma {
                     result = Statement::SolveFor(expr, var);
                     break;
@@ -230,7 +239,7 @@ impl Parser {
                 expression
             }
             TokenKind::Literal => {
-                let expression = self.parse_variable(current.text);
+                let expression = self.parse_literal_expression();
                 self.next_token();
 
                 // handle implicit multiplication
@@ -258,7 +267,7 @@ impl Parser {
                     self.insert_tokens(Token::new(
                         TokenKind::Star,
                         Span::new(0, 0),
-                        "*".to_string(),
+                        String::from("*"),
                     ))
                 }
                 expression
@@ -288,7 +297,13 @@ impl Parser {
         }
     }
 
-    fn parse_variable(&mut self, mut text: String) -> Expression {
+    fn parse_literal_expression(&mut self) -> Expression {
+        if let Some(expr) = self.parse_derivate() {
+            return expr;
+        }
+
+        let mut text = self.current_token().text;
+
         let mut components: Vec<Expression> = vec![];
 
         if self.peek_token(1).kind == TokenKind::LeftParenthesis {
@@ -318,32 +333,40 @@ impl Parser {
             components.extend(constants);
         }
 
-        // parse complex number
-        let mut text_parsed: String = String::new();
+        text = self.parse_imaginary_unit(text, &mut components);
 
-        while let Some(num) = text.find("i") {
-            if num == text.len() - 1 {
-                if self.peek_token(1).kind == TokenKind::Hat {
-                    self.next_token();
-                    components.push(self.parse_binary_expression(
-                        Some(Expression::ImaginaryUnit),
-                        BinaryOperatorKind::Multiplication.precedence(),
-                    ));
-                    self.previous_token();
-                } else {
-                    components.push(Expression::ImaginaryUnit);
-                }
-            } else {
-                components.push(Expression::ImaginaryUnit);
-            }
-            text_parsed += &text[..num];
-            text = text[num + 1..].to_string();
+        if text.len() != 0 {
+            components.push(self.parse_variable(text, true));
         }
 
-        text = text_parsed + &text;
+        if components.len() == 1 {
+            components[0].clone()
+        } else {
+            Expression::multiplication_from_vec(components)
+        }
+    }
+
+    fn parse_complex_variable(&mut self, mut text: String) -> Expression {
+        let mut components: Vec<Expression> = vec![];
+
+        text = self.parse_imaginary_unit(text, &mut components);
+
+        if text.len() != 0 {
+            components.push(self.parse_variable(text, true));
+        }
+
+        if components.len() == 1 {
+            components[0].clone()
+        } else {
+            Expression::multiplication_from_vec(components)
+        }
+    }
+
+    fn parse_variable(&mut self, mut text: String, peek_hat: bool) -> Expression {
+        let mut components: Vec<Expression> = vec![];
 
         // check if the last var as a power
-        if self.peek_token(1).kind == TokenKind::Hat {
+        if peek_hat && self.peek_token(1).kind == TokenKind::Hat {
             self.next_token();
             let var = text.chars().last().unwrap();
             components.push(self.parse_binary_expression(
@@ -366,16 +389,43 @@ impl Parser {
         if components.len() == 1 {
             components[0].clone()
         } else {
-            // components
-            //     .into_iter()
-            //     .reduce(Expression::multiplication)
-            //     .unwrap()
             Expression::multiplication_from_vec(components)
         }
     }
 
+    fn parse_imaginary_unit(
+        &mut self,
+        mut text: String,
+        components: &mut Vec<Expression>,
+    ) -> String {
+        let mut text_parsed: String = String::new();
+
+        while let Some(num) = text.find("i") {
+            if num == text.len() - 1 {
+                if self.peek_token(1).kind == TokenKind::Hat {
+                    self.next_token();
+                    components.push(self.parse_binary_expression(
+                        Some(Expression::ImaginaryUnit),
+                        BinaryOperatorKind::Multiplication.precedence(),
+                    ));
+                    self.previous_token();
+                } else {
+                    components.push(Expression::ImaginaryUnit);
+                }
+            } else {
+                components.push(Expression::ImaginaryUnit);
+            }
+            text_parsed += &text[..num];
+            text = text[num + 1..].to_string();
+        }
+
+        text_parsed + &text
+    }
+
     fn parse_function(&mut self, text: &str) -> (Option<Expression>, String) {
         let mut result = (None, text.to_string());
+
+        // TODO add parsing of user defined function.
 
         PredefinedFunction::all().iter().any(|func| {
             if let Some(rest) = text.strip_suffix(func) {
@@ -497,12 +547,101 @@ impl Parser {
         text_parsed + &text
     }
 
+    /// d / dy (xxx)
+    fn parse_derivate(&mut self) -> Option<Expression> {
+        // TODO add degree of derivation
+
+        let begin_position = self.position.clone();
+        let text = self.current_token().text;
+
+        if &"d" == &text {
+            self.next_token();
+            let derivation_degree: Option<Expression> = if self.is_equal(TokenKind::Hat) {
+                // d^
+                self.next_token();
+
+                let degree = if self.is_equal(TokenKind::Number) {
+                    // d^x
+                    self.parse_number_expression()
+                } else {
+                    self.position = begin_position;
+                    return None;
+                };
+                Some(degree)
+            } else {
+                None
+            };
+            // d{^x}
+            if let (TokenKind::Slash, TokenKind::Literal) =
+                (self.current_token().kind, self.peek_token(1).kind)
+            {
+                // d{^x}/lit
+                let text_peeked = self.peek_token(1).text;
+                if text_peeked.starts_with("d") && text_peeked.len() >= 2 {
+                    // d{^x}/dlit
+                    self.next_token();
+
+                    let derivation_variable = if let Expression::Variable(var) =
+                        self.parse_variable(String::from(&text_peeked[1..]), false)
+                    {
+                        var
+                    } else {
+                        panic!("Trying to put a derivation variable that is not of Type <Variable>")
+                    };
+
+                    self.next_token();
+
+                    if self.is_equal(TokenKind::Hat) && derivation_degree.is_some() {
+                        // d^x/dy^
+                        self.next_token();
+                        let num = self.parse_number_expression();
+                        if !self.is_equal(TokenKind::Number)
+                            && !num.equal(&derivation_degree.clone().unwrap())
+                        {
+                            self.diagnostics.report_expected_same_number(
+                                &derivation_degree.clone().unwrap(),
+                                &num,
+                            );
+                            self.position = begin_position;
+                            return None;
+                        }
+                        // d^x/dy^x
+                    } else if self.is_equal(TokenKind::Hat) && derivation_degree.is_none() {
+                        // d/dy^
+                        self.next_token();
+                        let num = self.parse_number_expression();
+                        self.diagnostics.report_unexpected_degree_for_derivate(num);
+                        self.position = begin_position;
+                        return None;
+                    }
+                    // d{^x}/dy{^x}(expr)
+                    if !self.is_equal(TokenKind::LeftParenthesis) {
+                        self.position = begin_position;
+                        return None;
+                    }
+                    self.next_token();
+                    let expression = self.parse_expression();
+                    self.equal_or_create_next(TokenKind::RightParenthesis);
+
+                    return Some(Expression::derivation(
+                        expression,
+                        derivation_variable,
+                        derivation_degree,
+                    ));
+                }
+                return None;
+            }
+            return None;
+        }
+        None
+    }
+
     fn string_to_fraction(text: String) -> (i64, i64) {
         let parts: Vec<&str> = text.split('.').collect();
 
         let interger_part = parts[0];
         let floating_part = parts[1];
-        let n = floating_part.len() as u32;
+        let n: u32 = floating_part.len() as u32;
 
         let denominator: i64 = 10_i64.pow(n);
         let float_parts_i64 = floating_part.parse::<i64>().unwrap();
@@ -553,6 +692,7 @@ mod tests_parser {
         ast::{
             constant::ConstantKind,
             function::{FunctionType, PredefinedFunction},
+            varibale::Variable,
             Expression, Statement,
         },
         parser::Parser,
@@ -560,8 +700,14 @@ mod tests_parser {
 
     fn verify_parser(input: &str, expected: Statement) {
         let mut parser = Parser::new(input);
-        let result = parser.parse();
-        assert_eq!(result, expected);
+        let mut result = parser.parse();
+        assert!(
+            result.equal(&expected),
+            "Inuput : {:?} \nResult : {:?}\nExpected : {:?}",
+            input,
+            result,
+            expected
+        );
     }
 
     #[test]
@@ -1022,6 +1168,126 @@ mod tests_parser {
             Statement::Simplify(Expression::addition(
                 Expression::number(4),
                 Expression::exponentiation(Expression::ImaginaryUnit, Expression::number(2)),
+            )),
+        );
+    }
+
+    #[test]
+    fn derivation() {
+        // d/dx(x + 1)
+        verify_parser(
+            "d/dx(x + 1)",
+            Statement::Simplify(Expression::derivation(
+                Expression::addition(Expression::variable("x".to_string()), Expression::number(1)),
+                Variable::new("x".to_string()),
+                None,
+            )),
+        );
+
+        // d/dx(x^2)
+        verify_parser(
+            "d/dx(x^2)",
+            Statement::Simplify(Expression::derivation(
+                Expression::exponentiation(
+                    Expression::variable("x".to_string()),
+                    Expression::number(2),
+                ),
+                Variable::new("x".to_string()),
+                None,
+            )),
+        );
+
+        // d/dx(2x*(y+2))
+        verify_parser(
+            "d/dx(2x*(y+2))",
+            Statement::Simplify(Expression::derivation(
+                Expression::multiplication(
+                    Expression::multiplication(
+                        Expression::number(2),
+                        Expression::variable("x".to_string()),
+                    ),
+                    Expression::addition(
+                        Expression::variable("y".to_string()),
+                        Expression::number(2),
+                    ),
+                ),
+                Variable::new("x".to_string()),
+                None,
+            )),
+        );
+
+        // d/dx(2x*(y+2)^2)
+        verify_parser(
+            "d/dx(2x*(y+2)^2)",
+            Statement::Simplify(Expression::derivation(
+                Expression::multiplication(
+                    Expression::multiplication(
+                        Expression::number(2),
+                        Expression::variable("x".to_string()),
+                    ),
+                    Expression::exponentiation(
+                        Expression::addition(
+                            Expression::variable("y".to_string()),
+                            Expression::number(2),
+                        ),
+                        Expression::number(2),
+                    ),
+                ),
+                Variable::new("x".to_string()),
+                None,
+            )),
+        );
+
+        // d^2/dx^2(x^2)
+        verify_parser(
+            "d^2/dx^2(x^2)",
+            Statement::Simplify(Expression::derivation(
+                Expression::exponentiation(
+                    Expression::variable("x".to_string()),
+                    Expression::number(2),
+                ),
+                Variable::new("x".to_string()),
+                Some(Expression::number(2)),
+            )),
+        );
+
+        // d^2/dx^2(x^2 + 2x)
+        verify_parser(
+            "d^2/dx^2(x^2 + 2x)",
+            Statement::Simplify(Expression::derivation(
+                Expression::addition(
+                    Expression::exponentiation(
+                        Expression::variable("x".to_string()),
+                        Expression::number(2),
+                    ),
+                    Expression::multiplication(
+                        Expression::number(2),
+                        Expression::variable("x".to_string()),
+                    ),
+                ),
+                Variable::new("x".to_string()),
+                Some(Expression::number(2)),
+            )),
+        );
+
+        // d/dx^2(x^2)
+        verify_parser(
+            "d/dx^2(x^2)",
+            Statement::Simplify(Expression::multiplication(
+                Expression::fraction(
+                    Expression::variable(String::from("d")),
+                    Expression::multiplication(
+                        Expression::variable(String::from("d")),
+                        Expression::exponentiation(
+                            Expression::variable(String::from("x")),
+                            Expression::number(2),
+                        ),
+                    ),
+                ),
+                Expression::exponentiation(
+                    Expression::variable(String::from("x")),
+                    Expression::number(2),
+                ),
             )),
         );
     }

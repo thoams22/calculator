@@ -5,7 +5,7 @@ use crate::ast::Expression;
 use super::{
     function::{FunctionType, PredefinedFunction},
     multiplication::Multiplication,
-    ConstantKind, Expr, State, varibale::Variable,
+    ConstantKind, Expr, State, varibale::Variable, negation,
 };
 
 use crate::utils::multinomial_expansion;
@@ -68,6 +68,20 @@ impl Expr for Exponentiation {
                     3 => Expression::negation(Expression::ImaginaryUnit),
                     _ => Expression::Error,
                 }
+            }
+            (_ , Expression::Negation(negation)) => {
+                Expression::fraction(
+                    Expression::number(1),
+                    Expression::exponentiation(self.get_base(), negation.sub_expr),
+                )
+                .simplify()
+            }
+            (_, Expression::Number(num)) if num.sub_expr < 0 => {
+                Expression::fraction(
+                    Expression::number(1),
+                    Expression::exponentiation(self.get_base(), Expression::number(-num.sub_expr)),
+                )
+                .simplify()
             }
             (_, Expression::Function(fun)) => self.simplify_exponent_logarithm(&fun),
             // (a*b)^c = a^c * b^c
