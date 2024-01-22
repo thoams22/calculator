@@ -302,7 +302,6 @@ impl Fraction {
                             }
                         })
                         .map(|pos| {
-                            println!("{}:{}", expr_expo.exponent, commons_denom.1[pos].exponent);
                             let exponenent =
                                 match (&expr_expo.exponent, &commons_denom.1[pos].exponent) {
                                     (Expression::Number(num), Expression::Number(num_2)) => {
@@ -460,7 +459,7 @@ impl Fraction {
         }
     }
 
-    /// Return the common part in the expression if its an addition else return the uniques subcomposant and their power
+    /// Return the common part in the expression if its an addition `else` return the uniques subcomposant and their power
     ///
     /// ### Exemple
     /// ```

@@ -4,9 +4,21 @@ use super::State;
 
 use  super::{Expr, Expression};
 
+
+/// Can be of the form 
+/// 
+/// cc
+/// cc_c
+/// cc_n
+/// cc_(cn)
+/// cc_(cn + cn)
+/// 
+/// where : 
+/// - c is a char
+/// - n is a number
 #[derive(PartialEq, Debug, Clone, Hash, Eq)]
 pub struct Variable {
-    pub sub_expr: String,
+    sub_expr: String,
 }
 
 impl Variable {

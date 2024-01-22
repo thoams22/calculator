@@ -169,6 +169,7 @@ impl Expr for FunctionType {
                 PredefinedFunction::Sqrt => match &args[0] {
                     Expression::Number(num) if num.sub_expr == 0 => Expression::number(0),
                     Expression::Number(num) if num.sub_expr == 1 => Expression::number(1),
+                    Expression::Number(num) if num.sub_expr == -1 => Expression::ImaginaryUnit,
                     // sqrt(16) ==> 4
                     Expression::Number(num) => {
                         if let Some((base, exponenent)) = is_perfect_power(&num.sub_expr) {
