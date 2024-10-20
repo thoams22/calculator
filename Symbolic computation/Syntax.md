@@ -23,6 +23,12 @@
 - User defined : 
 	- Nothing yet just defining a function.
 
+the function is parsed as if the function name is directly followed by a parenthesis.
+So if you write :
+- "lna(x+3)" this will be interpreted as $l*n*a(x)$, where $x+3$ is an argument of the function.
+- "aln(x+3)" this will be interpreted as $a*\ln(x)$, where $x+3$ is an argument of the function.
+- "ln*(x+3)" this will be interpreted as $l*n*(x+3)$, where the priority of operation is respected.
+
 ```functions that can be defined in the CLI and be reused after they can take arguments of the types Variable. The functions names are variable followed by a parenthesis, the number of arguments must be constant or an Error will be raised. Ex: a(x) is different than a(x, y) and only one can be defined.
 ```
 
@@ -71,6 +77,9 @@ Not in order of implementation.
 - Derivatives
 - Integrals
 - Complex (multiple form)
+- Domain of solution if var in solution
+- +- Solution
+- Ensemble of solution
 - Factories
 - Saves functions in 
 - Factorial/Gamma function

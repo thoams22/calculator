@@ -1,6 +1,12 @@
 use std::fmt::{Display, Formatter};
 
-use crate::diagnostic::Diagnostics;
+use anyhow::anyhow;
+
+#[derive(Debug, thiserror::Error, Clone)]
+pub enum LexerError {
+    #[error("Unknown char: '{0}'")]
+    UnknwonChar(char),
+}
 
 #[derive(PartialEq, Debug, Clone, Copy, Eq)]
 pub enum TokenKind {
@@ -14,23 +20,25 @@ pub enum TokenKind {
     RightCurly,
     LeftBracket,
     RightBracket,
+
     Comma,
     Semicolon,
     Colon,
-    Equal,
     Underscore,
-
+    BackSlash,
+    
     Plus,
     Minus,
     Star,
     Slash,
     Hat,
+    Equal,
     Percent,
     Prime,
+    Dot,
 
     NewLine,
     End,
-    Error,
 }
 
 impl Display for TokenKind {
@@ -57,9 +65,10 @@ impl Display for TokenKind {
             TokenKind::Percent => write!(f, "%"),
             TokenKind::Hat => write!(f, "^"),
             TokenKind::Prime => write!(f, "'"),
+            TokenKind::Dot => write!(f, "."),
             TokenKind::End => write!(f, "End of file"),
-            TokenKind::Error => write!(f, "Error"),
             TokenKind::NewLine => write!(f, "NewLine"),
+            TokenKind::BackSlash => write!(f, "\\"),
         }
     }
 }
@@ -104,7 +113,6 @@ pub struct Lexer {
     peeked: Option<Token>,
     end: bool,
     position: usize,
-    diagnostics: Diagnostics,
 }
 
 impl Lexer {
@@ -114,20 +122,18 @@ impl Lexer {
             peeked: None,
             end: false,
             position: 0,
-            diagnostics: Diagnostics::new(),
         }
     }
 
-    pub fn get_diagnostic(&mut self) -> Diagnostics {
-        self.diagnostics.clone()
+    /// Return the current Token if it exist else Lex the next one
+    pub fn next_token(&mut self) -> Result<Token, anyhow::Error> {
+        if let Some(token) = self.peeked.take() {
+            Ok(token)
+        } else {
+            self.convert()
+        }
     }
 
-    /// Return the current Token if it exist OR Lex it
-    pub fn next_token(&mut self) -> Token {
-        self.peeked.take().unwrap_or_else(|| self.convert())
-    }
-
-    /// Return the char and increase position by 1
     fn eat(&mut self) -> Option<char> {
         self.chars.get(self.position).cloned().map(|ch| {
             self.position += 1;
@@ -135,9 +141,7 @@ impl Lexer {
         })
     }
 
-    /// if char equals the predicate eat it
-    ///
-    /// else Nothing
+    /// Eat if predicated
     fn eat_if(&mut self, predicate: impl FnOnce(char) -> bool) -> Option<char> {
         self.chars.get(self.position).cloned().and_then(|ch| {
             if predicate(ch) {
@@ -148,7 +152,10 @@ impl Lexer {
         })
     }
 
-    fn convert(&mut self) -> Token {
+    /// Convert the char(s) that beigin in self.position into `Token` 
+    /// 
+    /// Can return an `LexerError`
+    fn convert(&mut self) -> Result<Token, anyhow::Error> {
         if self.end {
             panic!("Lexer ended");
         }
@@ -161,239 +168,257 @@ impl Lexer {
                         while let Some(x) = self.eat_if(|x: char| x.is_whitespace()) {
                             text.push(x)
                         }
-                        Token {
+                        Ok(Token {
                             kind: TokenKind::WhiteSpace,
                             span: Span {
                                 start,
                                 end: self.position,
                             },
                             text,
-                        }
+                        })
                     }
-                    '(' => Token {
+                    '(' => Ok(Token {
                         kind: TokenKind::LeftParenthesis,
                         text,
                         span: Span {
                             start,
                             end: self.position,
                         },
-                    },
-                    ')' => Token {
+                    }),
+                    ')' => Ok(Token {
                         kind: TokenKind::RightParenthesis,
                         text,
                         span: Span {
                             start,
                             end: self.position,
                         },
-                    },
+                    }),
 
-                    // '{' => Token {
-                    //     kind: TokenKind::LeftCurly,
-                    //     text,
-                    //     span: Span {
-                    //         start,
-                    //         end: self.position,
-                    //     },
-                    // },
-                    // '}' => Token {
-                    //     kind: TokenKind::RightCurly,
-                    //     text,
-                    //     span: Span {
-                    //         start,
-                    //         end: self.position,
-                    //     },
-                    // },
-
-                    // '[' => Token {
-                    //     kind: TokenKind::LeftBracket,
-                    //     text,
-                    //     span: Span {
-                    //         start,
-                    //         end: self.position,
-                    //     },
-                    // },
-                    // ']' => Token {
-                    //     kind: TokenKind::RightBracket,
-                    //     text,
-                    //     span: Span {
-                    //         start,
-                    //         end: self.position,
-                    //     },
-                    // },
-
-                    ',' => Token {
+                    '{' => Ok(Token {
+                        kind: TokenKind::LeftCurly,
+                        text,
+                        span: Span {
+                            start,
+                            end: self.position,
+                        },
+                    }),
+                    '}' => Ok(Token {
+                        kind: TokenKind::RightCurly,
+                        text,
+                        span: Span {
+                            start,
+                            end: self.position,
+                        },
+                    }),
+                    '[' => Ok(Token {
+                        kind: TokenKind::LeftBracket,
+                        text,
+                        span: Span {
+                            start,
+                            end: self.position,
+                        },
+                    }),
+                    ']' => Ok(Token {
+                        kind: TokenKind::RightBracket,
+                        text,
+                        span: Span {
+                            start,
+                            end: self.position,
+                        },
+                    }),
+                    ',' => Ok(Token {
                         kind: TokenKind::Comma,
                         text,
                         span: Span {
                             start,
                             end: self.position,
                         },
-                    },
-                    // ';' => Token {
-                    //     kind: TokenKind::Semicolon,
-                    //     text,
-                    //     span: Span {
-                    //         start,
-                    //         end: self.position,
-                    //     },
-                    // },
-                    // ':' => Token {
-                    //     kind: TokenKind::Colon,
-                    //     text,
-                    //     span: Span {
-                    //         start,
-                    //         end: self.position,
-                    //     },
-                    // },
-                    '=' => Token {
+                    }),
+                    ';' => Ok(Token {
+                        kind: TokenKind::Semicolon,
+                        text,
+                        span: Span {
+                            start,
+                            end: self.position,
+                        },
+                    }),
+                    ':' => Ok(Token {
+                        kind: TokenKind::Colon,
+                        text,
+                        span: Span {
+                            start,
+                            end: self.position,
+                        },
+                    }),
+                    '=' => Ok(Token {
                         kind: TokenKind::Equal,
                         text,
                         span: Span {
                             start,
                             end: self.position,
                         },
-                    },
-                    // '_' => Token {
-                    //     kind: TokenKind::Underscore,
-                    //     text,
-                    //     span: Span {
-                    //         start,
-                    //         end: self.position,
-                    //     },
-                    // },
-
-                    '+' => Token {
+                    }),
+                    '_' => Ok(Token {
+                        kind: TokenKind::Underscore,
+                        text,
+                        span: Span {
+                            start,
+                            end: self.position,
+                        },
+                    }),
+                    '\\' => Ok(Token {
+                        kind: TokenKind::BackSlash,
+                        text,
+                        span: Span {
+                            start,
+                            end: self.position,
+                        },
+                    }),
+                    '+' => Ok(Token {
                         kind: TokenKind::Plus,
                         text,
                         span: Span {
                             start,
                             end: self.position,
                         },
-                    },
-                    '-' => Token {
+                    }),
+                    '-' => Ok(Token {
                         kind: TokenKind::Minus,
                         text,
                         span: Span {
                             start,
                             end: self.position,
                         },
-                    },
-                    '*' => Token {
+                    }),
+                    '*' => Ok(Token {
                         kind: TokenKind::Star,
                         text,
                         span: Span {
                             start,
                             end: self.position,
                         },
-                    },
-                    '/' => Token {
+                    }),
+                    '/' => Ok(Token {
                         kind: TokenKind::Slash,
                         text,
                         span: Span {
                             start,
                             end: self.position,
                         },
-                    },
-                    // '%' => Token {
-                    //     kind: TokenKind::Percent,
-                    //     text,
-                    //     span: Span {
-                    //         start,
-                    //         end: self.position,
-                    //     },
-                    // },
-                    '^' => Token {
+                    }),
+                    '%' => Ok(Token {
+                        kind: TokenKind::Percent,
+                        text,
+                        span: Span {
+                            start,
+                            end: self.position,
+                        },
+                    }),
+                    '\'' => Ok(Token {
+                        kind: TokenKind::Prime,
+                        text,
+                        span: Span {
+                            start,
+                            end: self.position,
+                        },
+                    }),
+                    '.' => Ok(Token {
+                        kind: TokenKind::Dot,
+                        text,
+                        span: Span {
+                            start,
+                            end: self.position,
+                        },
+                    }),
+                    '^' => Ok(Token {
                         kind: TokenKind::Hat,
                         text,
                         span: Span {
                             start,
                             end: self.position,
                         },
-                    },
-                    // '\'' => Token {
-                    //     kind: TokenKind::Prime,
-                    //     text,
-                    //     span: Span {
-                    //         start,
-                    //         end: self.position,
-                    //     },
-                    // },
-                    // '\n' => Token {
-                    //     kind: TokenKind::NewLine,
-                    //     text,
-                    //     span: Span {
-                    //         start,
-                    //         end: self.position,
-                    //     },
-                    // },
-                    // '\r' => {
-                    //     if let Some(x) = self.eat_if(|x| x == '\n') {
-                    //         text,.push(x)
-                    //     }
-                    //     Token {
-                    //         kind: TokenKind::NewLine,
-                    //         text,
-                    //         span: Span {
-                    //             start,
-                    //             end: self.position,
-                    //         },
-                    //     }
-                    // }
+                    }),
+                    '\n' => Ok(Token {
+                        kind: TokenKind::NewLine,
+                        text,
+                        span: Span {
+                            start,
+                            end: self.position,
+                        },
+                    }),
+                    '\r' => {
+                        if let Some(x) = self.eat_if(|x| x == '\n') {
+                            text.push(x)
+                        }
+                        Ok(Token {
+                            kind: TokenKind::NewLine,
+                            text,
+                            span: Span {
+                                start,
+                                end: self.position,
+                            },
+                        })
+                    }
                     _ => {
                         if x.is_ascii_alphabetic() {
                             while let Some(x) = self.eat_if(|x| x.is_ascii_alphabetic()) {
                                 text.push(x)
                             }
 
-                            Token {
+                            Ok(Token {
                                 kind: TokenKind::Literal,
                                 text,
                                 span: Span {
                                     start,
                                     end: self.position,
                                 },
-                            }
+                            })
                         } else if x.is_ascii_digit() {
-                            while let Some(x) = self.eat_if(|x| x.is_ascii_digit() || x == '.') {
+                            // 45
+                            while let Some(x) = self.eat_if(|x| x.is_ascii_digit()) {
                                 text.push(x)
                             }
+                            // 45.
+                            if x == '.' {
+                                text.push(x)
+                            }
+                            // 45.67
+                            while let Some(x) = self.eat_if(|x| x.is_ascii_digit()) {
+                                text.push(x)
+                            }
+                            
 
-                            Token {
+                            Ok(Token {
                                 kind: TokenKind::Number,
                                 text,
                                 span: Span {
                                     start,
                                     end: self.position,
                                 },
-                            }
+                            })
                         } else {
-                            self.diagnostics.report_unknown_char(x);
-                            Token {
-                                kind: TokenKind::Error,
-                                text,
-                                span: Span {
-                                    start,
-                                    end: self.position,
-                                },
-                            }
+                            Err(
+                                anyhow!(LexerError::UnknwonChar(x))
+                            )
                         }
                     }
                 }
             }
             None => {
                 self.end = true;
-                Token {
+                Ok(Token {
                     kind: TokenKind::End,
                     text: "".to_string(),
                     span: Span {
                         start,
                         end: self.position,
                     },
-                }
+                })
             }
         }
     }
 }
+
 
 #[cfg(test)]
 mod test_lexer {
@@ -402,77 +427,62 @@ mod test_lexer {
     #[test]
     fn test_lexer() {
         let mut lexer = Lexer::new("1 + 2".chars().collect());
-        assert_eq!(lexer.next_token().kind, TokenKind::Number);
-        assert_eq!(lexer.next_token().kind, TokenKind::WhiteSpace);
-        assert_eq!(lexer.next_token().kind, TokenKind::Plus);
-        assert_eq!(lexer.next_token().kind, TokenKind::WhiteSpace);
-        assert_eq!(lexer.next_token().kind, TokenKind::Number);
-        assert_eq!(lexer.next_token().kind, TokenKind::End);
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::Number));
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::WhiteSpace));
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::Plus));
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::WhiteSpace));
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::Number));
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::End));
     }
-
+    
     #[test]
     fn test_lexer_2() {
         let mut lexer = Lexer::new("1 * 2".chars().collect());
-        assert_eq!(lexer.next_token().kind, TokenKind::Number);
-        assert_eq!(lexer.next_token().kind, TokenKind::WhiteSpace);
-        assert_eq!(lexer.next_token().kind, TokenKind::Star);
-        assert_eq!(lexer.next_token().kind, TokenKind::WhiteSpace);
-        assert_eq!(lexer.next_token().kind, TokenKind::Number);
-        assert_eq!(lexer.next_token().kind, TokenKind::End);
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::Number));
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::WhiteSpace));
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::Star));
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::WhiteSpace));
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::Number));    
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::End));
     }
 
     #[test]
     fn test_lexer_3() {
         let mut lexer = Lexer::new("1 / 2".chars().collect());
-        assert_eq!(lexer.next_token().kind, TokenKind::Number);
-        assert_eq!(lexer.next_token().kind, TokenKind::WhiteSpace);
-        assert_eq!(lexer.next_token().kind, TokenKind::Slash);
-        assert_eq!(lexer.next_token().kind, TokenKind::WhiteSpace);
-        assert_eq!(lexer.next_token().kind, TokenKind::Number);
-        assert_eq!(lexer.next_token().kind, TokenKind::End);
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::Number));
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::WhiteSpace));
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::Slash));
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::WhiteSpace));
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::Number));    
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::End));
     }
 
     #[test]
     fn test_lexer_4() {
         let mut lexer = Lexer::new("ae % vrr ^fs ".chars().collect());
-        assert_eq!(lexer.next_token().kind, TokenKind::Literal);
-        assert_eq!(lexer.next_token().kind, TokenKind::WhiteSpace);
-        assert_eq!(lexer.next_token().kind, TokenKind::Error);
-        assert_eq!(lexer.next_token().kind, TokenKind::WhiteSpace);
-        assert_eq!(lexer.next_token().kind, TokenKind::Literal);
-        assert_eq!(lexer.next_token().kind, TokenKind::WhiteSpace);
-        assert_eq!(lexer.next_token().kind, TokenKind::Hat);
-        assert_eq!(lexer.next_token().kind, TokenKind::Literal);
-        assert_eq!(lexer.next_token().kind, TokenKind::WhiteSpace);
-        assert_eq!(lexer.next_token().kind, TokenKind::End);
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::Literal));
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::WhiteSpace));
+        assert!(lexer.next_token().is_err());
     }
 
     #[test]
     fn test_lexer_5() {
         let mut lexer = Lexer::new("true & false".chars().collect());
-        assert_eq!(lexer.next_token().kind, TokenKind::Literal);
-        assert_eq!(lexer.next_token().kind, TokenKind::WhiteSpace);
-        assert_eq!(lexer.next_token().kind, TokenKind::Error);
-        assert_eq!(lexer.next_token().kind, TokenKind::WhiteSpace);
-        assert_eq!(lexer.next_token().kind, TokenKind::Literal);
-        assert_eq!(lexer.next_token().kind, TokenKind::End);
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::Literal));
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::WhiteSpace));
+        assert!(lexer.next_token().is_err());
     }
 
     #[test]
     fn test_lexer_6() {
         let mut lexer = Lexer::new("''fç".chars().collect());
-        assert_eq!(lexer.next_token().kind, TokenKind::Error);
-        assert_eq!(lexer.next_token().kind, TokenKind::Error);
-        assert_eq!(lexer.next_token().kind, TokenKind::Literal);
-        assert_eq!(lexer.next_token().kind, TokenKind::Error);
-        assert_eq!(lexer.next_token().kind, TokenKind::End);
+        assert!(lexer.next_token().is_err());
     }
 
     #[test]
     fn test_lexer_7() {
         let mut lexer = Lexer::new("34.45;".chars().collect());
-        assert_eq!(lexer.next_token().kind, TokenKind::Number);
-        assert_eq!(lexer.next_token().kind, TokenKind::Error);
-        assert_eq!(lexer.next_token().kind, TokenKind::End);
+        assert!(lexer.next_token().is_ok_and(|token| token.kind == TokenKind::Number));
+        assert!(lexer.next_token().is_err());
     }
 }

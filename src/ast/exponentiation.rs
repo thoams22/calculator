@@ -5,7 +5,9 @@ use crate::ast::Expression;
 use super::{
     function::{FunctionType, PredefinedFunction},
     multiplication::Multiplication,
-    ConstantKind, Expr, State, varibale::Variable,
+    negation,
+    varibale::Variable,
+    ConstantKind, Expr, State,
 };
 
 use crate::utils::multinomial_expansion;
@@ -57,18 +59,38 @@ impl Expr for Exponentiation {
         self.simplified = true;
 
         match (self.get_base(), self.get_exponent()) {
+            // epxr^-neg = 1/expr^neg
+            // where expr & neg are Expression Type
+            (_, Expression::Negation(negation)) => Expression::fraction(
+                Expression::number(1),
+                Expression::exponentiation(self.get_base(), negation.sub_expr),
+            )
+            .simplify(),
+            // epxr^-int = 1/expr^int
+            // where expr is Expression Type
+            // and int is a Number
+            (_, Expression::Number(num)) if num.sub_expr < 0 => Expression::fraction(
+                Expression::number(1),
+                Expression::exponentiation(self.get_base(), Expression::number(-num.sub_expr)),
+            )
+            .simplify(),
+            // n^n
+            // where n is a natural(N) number
             (Expression::Number(num1), Expression::Number(num2)) => {
                 Expression::number(num1.sub_expr.pow((num2.sub_expr).try_into().unwrap()))
             }
-            (Expression::ImaginaryUnit, Expression::Number(num)) => {                
-                match num.sub_expr % 4 {
-                    0 => Expression::number(1),
-                    1 => Expression::ImaginaryUnit,
-                    2 => Expression::number(-1),
-                    3 => Expression::negation(Expression::ImaginaryUnit),
-                    _ => Expression::Error,
-                }
-            }
+            // n is an integer
+            // i^(0*n) = 1,
+            // i^(1*n) = i,
+            // i^(2*n) = -1,
+            // i^(3*n) = -i
+            (Expression::ImaginaryUnit, Expression::Number(num)) => match num.sub_expr {
+                c if c % 4 == 0 => Expression::number(1),
+                c if c % 4 == 1 => Expression::ImaginaryUnit,
+                c if c % 4 == 2 => Expression::number(-1),
+                c if c % 4 == 3 => Expression::negation(Expression::ImaginaryUnit),
+                _ => panic!("ImaginaryUnit exponentiated to a number where number % 4 not in [0, 1, 2, 3]")
+            },
             (_, Expression::Function(fun)) => self.simplify_exponent_logarithm(&fun),
             // (a*b)^c = a^c * b^c
             (Expression::Multiplication(mult), exponent) => {
@@ -80,13 +102,15 @@ impl Expr for Exponentiation {
                 });
                 Expression::Multiplication(Box::new(distributed_exponent)).simplify()
             }
-            (Expression::Addition(add), Expression::Number(num)) => {
-                if num.sub_expr.is_positive() {
-                    multinomial_expansion(num.sub_expr, *add)
-                } else {
-                    self.simplify_exponent_one_zero()
-                }
-            }
+            // (a + b + ...)^n
+            // where n is a natural(N) number
+            // (Expression::Addition(add), Expression::Number(num)) => {
+            //     if num.sub_expr.is_positive() {
+            //         multinomial_expansion(num.sub_expr, *add)
+            //     } else {
+            //         self.simplify_exponent_one_zero()
+            //     }
+            // }
             // (a/b)^c = (a^c)/(b^c)
             (Expression::Fraction(frac), exponent) => Expression::fraction(
                 Expression::exponentiation(frac.get_numerator(), exponent.clone()),
@@ -153,33 +177,97 @@ impl Expr for Exponentiation {
     ) {
         match prev_state {
             State::Over(mut pos_y, mut pos_x) | State::Same(mut pos_y, mut pos_x) => {
-                self.get_base()
-                    .calc_pos(position, State::Same(pos_y, pos_x), memoized);
-                pos_y += self.get_base().get_above_height(memoized);
-                pos_x += self.get_base().get_length(memoized);
-                self.get_exponent()
-                    .calc_pos(position, State::Over(pos_y, pos_x), memoized);
+                match self.get_base() {
+                    Expression::Number(_)
+                    | Expression::Function(_)
+                    | Expression::Variable(_)
+                    | Expression::Constant(_)
+                    | Expression::ImaginaryUnit => {
+                        self.get_base()
+                            .calc_pos(position, State::Same(pos_y, pos_x), memoized);
+
+                        pos_x += self.get_base().get_length(memoized);
+                        pos_y += self.get_base().get_above_height(memoized);
+                        self.get_exponent()
+                            .calc_pos(position, State::Over(pos_y, pos_x), memoized);
+                    }
+                    _ => {
+                        self.make_parenthesis(&mut pos_y, &mut pos_x, position, false, memoized);
+
+                        self.get_base()
+                            .calc_pos(position, State::Same(pos_y, pos_x), memoized);
+
+                        pos_x += self.get_base().get_length(memoized);
+                        self.make_parenthesis(&mut pos_y, &mut pos_x, position, true, memoized);
+                        pos_y += self.get_base().get_above_height(memoized);
+
+                        self.get_exponent()
+                            .calc_pos(position, State::Over(pos_y, pos_x), memoized);
+                    }
+                }
             }
-            State::Under(mut pos_y, mut pos_x) => {
-                pos_y -= self.get_exponent().get_height(memoized) - 1
-                    + self.get_base().get_above_height(memoized);
-                self.get_base()
-                    .calc_pos(position, State::Same(pos_y, pos_x), memoized);
-                pos_x += self.get_base().get_length(memoized);
-                self.get_exponent().calc_pos(
-                    position,
-                    State::Over(pos_y + self.get_base().get_above_height(memoized), pos_x),
-                    memoized,
-                );
-            }
+            State::Under(mut pos_y, mut pos_x) => match self.get_base() {
+                Expression::Number(_)
+                | Expression::Function(_)
+                | Expression::Variable(_)
+                | Expression::Constant(_)
+                | Expression::ImaginaryUnit => {
+                    pos_y -= self.get_exponent().get_height(memoized) - 1
+                        + self.get_base().get_above_height(memoized);
+
+                    self.get_base()
+                        .calc_pos(position, State::Same(pos_y, pos_x), memoized);
+                    pos_x += self.get_base().get_length(memoized);
+
+                    self.get_exponent().calc_pos(
+                        position,
+                        State::Over(pos_y + self.get_base().get_above_height(memoized), pos_x),
+                        memoized,
+                    );
+                }
+                _ => {
+                    pos_y -= self.get_exponent().get_height(memoized) - 1
+                        + self.get_base().get_above_height(memoized);
+
+                    self.make_parenthesis(&mut pos_y, &mut pos_x, position, false, memoized);
+
+                    self.get_base()
+                        .calc_pos(position, State::Same(pos_y, pos_x), memoized);
+                    pos_x += self.get_base().get_length(memoized);
+                    self.make_parenthesis(&mut pos_y, &mut pos_x, position, true, memoized);
+
+                    self.get_exponent().calc_pos(
+                        position,
+                        State::Over(pos_y + self.get_base().get_above_height(memoized), pos_x),
+                        memoized,
+                    );
+                }
+            },
         }
     }
 
     fn get_length(&self, memoized: &mut std::collections::HashMap<Expression, (i8, i8, i8)>) -> i8 {
-        self.get_base().get_length(memoized) + self.get_exponent().get_length(memoized)
+        //  y
+        // x
+        // __
+        match self.get_base() {
+            Expression::Number(_)
+            | Expression::Function(_)
+            | Expression::Variable(_)
+            | Expression::Constant(_)
+            | Expression::ImaginaryUnit => {
+                self.get_base().get_length(memoized) + self.get_exponent().get_length(memoized)
+            }
+            _ => {
+                // add parenthesis
+                self.get_base().get_length(memoized) + self.get_exponent().get_length(memoized) + 2
+            }
+        }
     }
 
     fn get_height(&self, memoized: &mut std::collections::HashMap<Expression, (i8, i8, i8)>) -> i8 {
+        //  y |
+        // x  |
         self.get_base().get_height(memoized) + self.get_exponent().get_height(memoized)
     }
 
@@ -187,8 +275,9 @@ impl Expr for Exponentiation {
         &self,
         memoized: &mut std::collections::HashMap<Expression, (i8, i8, i8)>,
     ) -> i8 {
-        self.get_base().get_above_height(memoized)
-        + self.get_exponent().get_height(memoized)
+        //  y |
+        // x  |
+        self.get_base().get_above_height(memoized) + self.get_exponent().get_height(memoized)
     }
 }
 

@@ -10,6 +10,7 @@ use super::{
 
 #[derive(PartialEq, Debug, Clone, Hash, Eq)]
 pub struct Complex {
+    // a + bi
     pub sub_expr: [Expression; 2],
     pub simplified: bool,
 }
@@ -22,10 +23,13 @@ impl Complex {
         }
     }
 
+    // a + bi
+    
+    // a
     pub fn get_real(&self) -> Expression {
         self.sub_expr[0].clone()
     }
-
+    // b
     pub fn get_imaginary(&self) -> Expression {
         self.sub_expr[1].clone()
     }
@@ -38,6 +42,9 @@ impl Complex {
         self.sub_expr[1] = imaginary
     }
 
+    // re^(i*theta)
+
+    // r
     pub fn get_modulus(self) -> Expression {
         Expression::function(FunctionType::Predefined(
             PredefinedFunction::Sqrt,
@@ -49,6 +56,7 @@ impl Complex {
         .simplify()
     }
 
+    // theta
     pub fn get_argument(self) -> Expression {
         Expression::function(FunctionType::Predefined(
             PredefinedFunction::Atan,

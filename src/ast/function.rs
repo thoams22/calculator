@@ -169,6 +169,8 @@ impl Expr for FunctionType {
                 PredefinedFunction::Sqrt => match &args[0] {
                     Expression::Number(num) if num.sub_expr == 0 => Expression::number(0),
                     Expression::Number(num) if num.sub_expr == 1 => Expression::number(1),
+                    Expression::Number(num) if num.sub_expr == -1 => Expression::ImaginaryUnit,
+                    // sqrt(16) ==> 4
                     Expression::Number(num) => {
                         if let Some((base, exponenent)) = is_perfect_power(&num.sub_expr) {
                             if exponenent == 2_u32 {
@@ -177,6 +179,7 @@ impl Expr for FunctionType {
                         }
                         Expression::function(FunctionType::Predefined(kind, args))
                     }
+                    // sqrt(x^2) ==> abs(x)
                     Expression::Exponentiation(expr) => {
                         if let Expression::Number(num) = expr.get_exponent() {
                             if num.sub_expr % 2 == 0 {
@@ -193,6 +196,7 @@ impl Expr for FunctionType {
                 PredefinedFunction::Root => match &args[1] {
                     Expression::Number(num) if num.sub_expr == 0 => Expression::number(1),
                     Expression::Number(num) if num.sub_expr == 1=> args[0].clone(),
+                    // root(x, num), num = y^x ==> y
                     Expression::Number(num) => {
                         if let Expression::Number(num2) = &args[0] {
                             if let Some((base, exponenent)) = is_perfect_power(&num.sub_expr) {
@@ -203,6 +207,7 @@ impl Expr for FunctionType {
                         }
                         Expression::function(FunctionType::Predefined(kind, args))
                     }
+                    // root(x, y^x) ==> abs(y)
                     Expression::Exponentiation(expr) => {
                         if let Expression::Number(num) = expr.get_exponent() {
                             if let Expression::Number(root_num) = &args[1] {

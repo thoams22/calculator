@@ -1,6 +1,8 @@
 use std::io;
 
-use crate::{ast::Expression, parser::Parser, solver::solve, utils::substitute};
+use lexer::LexerError;
+
+use crate::{ast::Expression, parser::Parser};
 
 mod ast;
 mod diagnostic;
@@ -9,55 +11,56 @@ mod parser;
 mod solver;
 mod utils;
 
-fn main() {
+// TODO refactor print_console()
+// TODO do a proper factorise function in utils
+// TODO add error handling and propagation
+// TODO make decision tree for simplify to try with and without expanding multinomial expression
+// TODO make simplify return a solution in mutiple form (like developped and undevelopped)
+// TODO add step by step solution OR a proper error context to better find where the "bad comportement is caused"
+
+fn main() -> Result<(), LexerError> {
     let mut expression = String::new();
 
     io::stdin()
         .read_line(&mut expression)
         .expect("Failed to read line");
+
     expression = expression.trim_end().to_string();
 
     while expression != *"exit" {
-        let mut parser = Parser::new(&expression);
+        match Parser::default().lex(&expression) {
+            Ok(mut parser) => match parser.parse() {
+                Ok(statement) => {
+                    println!("Before");
+                    statement.print_console();
 
-        if !parser.get_diagnostic_message().is_empty() {
-            println!("\n***LEXER ERROR***\n");
+                    let result = statement.solve();
 
-            for diag in parser.get_diagnostic_message() {
-                println!("{}", diag);
-            }
-            println!("\n***END OF ERROR***");
-            println!();
-        } else {
-            let statement = parser.parse();
+                    match result {
+                        Ok(solutions) => {
+                            println!("\n");
+                            println!("After:\n");
 
-            if !parser.get_diagnostic_message().is_empty() {
-                println!("\n*** PARSER ERROR***\n");
-
-                for diag in parser.get_diagnostic_message() {
-                    println!("{}", diag);
+                            solutions.iter().for_each(|solution| {
+                                solution.print_console();
+                            })
+                        }
+                        Err(err) => {
+                            eprintln!("Error:\n");
+                            eprintln!("{}", err);
+                        }
+                    }
                 }
-                println!("\n***END OF ERROR***");
-                println!();
-            } else {
-
-                println!("Before");
-                statement.print_console();
-
-                let result = match statement {
-                    ast::Statement::Simplify(expression) => vec![expression.simplify()],
-                    ast::Statement::Solve(expression) => solve(expression, None),
-                    ast::Statement::SolveFor(expression, variable) => solve(expression, Some(variable)),
-                    ast::Statement::Replace(expression, equality) => solve(substitute(expression, &equality), None),
-                    ast::Statement::Error => vec![Expression::Error],
-                };
-
-                println!("\n");
-                println!("After:\n");
-                result.iter().for_each(|solution| {
-                    // solution.print_tree(None);
-                    solution.print_console();
-                });
+                Err(errs) => {
+                    eprintln!("Error:\n");
+                    errs.iter().for_each(|err| {
+                        eprintln!("{}", err);
+                    });
+                }
+            },
+            Err(err) => {
+                eprintln!("Error:\n");
+                eprintln!("{}", err)
             }
         }
 
@@ -67,4 +70,6 @@ fn main() {
             .expect("Failed to read line");
         expression = expression.trim_end().to_string();
     }
+
+    Ok(())
 }

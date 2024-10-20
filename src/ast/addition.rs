@@ -130,7 +130,6 @@ impl Expr for Addition {
         let mut position_clone = position.clone();
 
         self.sub_expr[max_height_index].calc_pos(&mut position_clone, prev_state, memoized);
-
         let pos_y = position_clone[len].1 .0;
         let mut pos_x = prev_state.get_pos_x();
 
@@ -139,7 +138,7 @@ impl Expr for Addition {
                 position.push((" + ".to_string(), (pos_y, pos_x)));
                 pos_x += 3;
             }
-
+            
             expr.calc_pos(position, State::Same(pos_y, pos_x), memoized);
             pos_x += expr.get_length(memoized);
         }

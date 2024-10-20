@@ -3,7 +3,7 @@ use crate::ast::{
     equality::Equality,
     function::{FunctionType, PredefinedFunction},
     multiplication::Multiplication,
-    Expression, varibale::Variable, Expr, constant::ConstantKind,
+    Expression, varibale::Variable, Expr, constant::ConstantKind, number::Number,
 };
 
 use crate::utils::{
