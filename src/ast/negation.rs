@@ -104,18 +104,18 @@ impl Expr for Negation {
         prev_state: super::State,
         memoized: &mut std::collections::HashMap<Expression, (i8, i8, i8)>,
     ) {
-        let (mut pos_y, mut pos_x) = prev_state.get_pos();
+        let (pos_y, mut pos_x) = prev_state.get_pos();
 
         position.push(("-".to_string(), (pos_y, pos_x)));
         pos_x += 1;
 
-        self.make_parenthesis(&mut pos_y, &mut pos_x, position, false, memoized); 
+        // self.make_parenthesis(&mut pos_y, &mut pos_x, position, false, memoized); 
 
         self.sub_expr
             .calc_pos(position, State::Same(pos_y, pos_x), memoized);
         pos_x += self.sub_expr.get_length(memoized);
         
-        self.make_parenthesis(&mut pos_y, &mut pos_x, position, true, memoized);
+        // self.make_parenthesis(&mut pos_y, &mut pos_x, position, true, memoized);
     }
 
     fn get_length(&self, memoized: &mut std::collections::HashMap<Expression, (i8, i8, i8)>) -> i8 {

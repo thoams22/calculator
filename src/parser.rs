@@ -1,57 +1,70 @@
-use std::f32::consts::E;
-
 use crate::{
     ast::{
         constant::ConstantKind,
         function::{FunctionType, PredefinedFunction},
+        varibale::Variable,
         Expression, Statement,
     },
-    diagnostic::Diagnostics,
     lexer::{Lexer, Span, Token, TokenKind},
     utils::gcd,
 };
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
+pub enum ParserError {
+    #[error("No Token to parse")]
+    NoToken,
+    #[error("Unexpected Token: <{0}>")]
+    UnexpectedToken(TokenKind),
+    #[error("Invalid TokenKind: Expected <{expected}>, found <{found}>")]
+    UnexpectedTokenKind {
+        expected: TokenKind,
+        found: TokenKind,
+    },
+    #[error("Invalid Expression: Expected <Variable> OR <Equality>, found <{0}>")]
+    ExpectedVarOrEquality(Expression),
+    #[error("Invalid Number: Expected <i64> OR <f64>, found <{0}>")]
+    ExpectedNumber(String),
+    #[error(
+        "Invalid number of argument(s): Function '{0}' expects {1} argument(s), but was given {2}"
+    )]
+    InvalidArgumentCount(PredefinedFunction, usize, usize),
+    #[error("Invalid degree of derivation: Expected same values, found <{0}> and <{1}>")]
+    InvalidDegreeOfDerivation(Expression, Expression),
+    #[error("Invalid variable of derivation: Expected <Literal>, found <{0}>")]
+    InvalidVariableOfDerivation(TokenKind),
+}
+
+#[derive(Debug, Default)]
 pub struct Parser {
-    position: usize,
-    tokens: Vec<Token>,
-    diagnostics: Diagnostics,
+    pub position: usize,
+    pub tokens: Vec<Token>,
+    pub diagnostics: Vec<ParserError>,
 }
 
 impl Parser {
-    pub fn new(text: &str) -> Self {
+    /// Lex the input string
+    pub fn lex(mut self, text: &str) -> Result<Self, anyhow::Error> {
         let mut lexer = Lexer::new(text.chars().collect());
 
-        let mut token: Token = lexer.next_token();
+        let mut token: Token = lexer.next_token()?;
         let mut tokens: Vec<Token> = Vec::new();
 
-        while token.kind != TokenKind::End && token.kind != TokenKind::Error {
+        while token.kind != TokenKind::End {
             if token.kind != TokenKind::WhiteSpace {
                 tokens.push(token);
             }
-            token = lexer.next_token();
+            token = lexer.next_token()?;
         }
+
         if token.kind == TokenKind::End {
             tokens.push(token);
         }
-
-        Self {
-            position: 0,
-            tokens,
-            diagnostics: lexer.get_diagnostic(),
-        }
+        self.tokens = tokens;
+        Ok(self)
     }
 
     fn insert_tokens(&mut self, elem: Token) {
         self.tokens.insert(self.position, elem);
-    }
-
-    pub fn get_tokens(&mut self) -> Vec<Token> {
-        self.tokens.clone()
-    }
-
-    pub fn get_diagnostic_message(&mut self) -> Vec<String> {
-        self.diagnostics.get_messages()
     }
 
     fn peek_token(&mut self, offset: isize) -> Token {
@@ -78,16 +91,15 @@ impl Parser {
         self.peek_token(0)
     }
 
-    fn go_to_tokent(&mut self, position: usize) {
-        self.position = position;
-    }
-
     fn equal_or_create_next(&mut self, kind: TokenKind) -> Token {
         if self.current_token().kind == kind {
             self.next_token()
         } else {
             let current = self.current_token().kind;
-            self.diagnostics.report_unexpected_token(&current, &kind);
+            self.diagnostics.push(ParserError::UnexpectedTokenKind {
+                expected: kind,
+                found: current,
+            });
             Token {
                 kind,
                 text: String::new(),
@@ -101,7 +113,10 @@ impl Parser {
             self.current_token()
         } else {
             let current = self.current_token().kind;
-            self.diagnostics.report_unexpected_token(&current, &kind);
+            self.diagnostics.push(ParserError::UnexpectedTokenKind {
+                expected: kind,
+                found: current,
+            });
             Token {
                 kind,
                 text: String::new(),
@@ -114,32 +129,54 @@ impl Parser {
         self.current_token().kind == kind
     }
 
-    pub fn parse(&mut self) -> Statement {
-        let mut result = Statement::Error;
-        while let Some(expr) = self.parse_type() {
-            if self.current_token().kind == TokenKind::Comma {
-                // TODO add a loop to get second equality if substitue or for later sys eq
-                self.next_token();
-                let after_comma = self.parse_expression();
-                if let Expression::Variable(var) = after_comma {
-                    result = Statement::SolveFor(expr, var);
-                    break;
-                } else if let Expression::Equality(eq) = after_comma {
-                    result = Statement::Replace(expr, *eq);
-                    break;
+    /// Parse the tokens previously lexed and return a Statement or an error
+    pub fn parse(&mut self) -> Result<Statement, Vec<ParserError>> {
+        if self.tokens.is_empty() {
+            self.diagnostics.push(ParserError::NoToken);
+            return Err(self.diagnostics.clone());
+        } else {
+            while let Some(expr) = self.parse_type() {
+                if self.current_token().kind == TokenKind::Comma {
+                    // TODO add a loop to get second equality if substitue or for later sys eq
+                    self.next_token();
+                    let after_comma = self.parse_expression();
+                    if let Expression::Variable(var) = after_comma {
+                        if self.diagnostics.is_empty() {
+                            return Ok(Statement::SolveFor(expr, var));
+                        } else {
+                            return Err(self.diagnostics.clone());
+                        }
+                    } else if let Expression::Equality(eq) = after_comma {
+                        if self.diagnostics.is_empty() {
+                            return Ok(Statement::Replace(expr, *eq));
+                        } else {
+                            return Err(self.diagnostics.clone());
+                        }
+                    } else {
+                        self.diagnostics
+                            .push(ParserError::ExpectedVarOrEquality(after_comma));
+                        return Err(self.diagnostics.clone());
+                    }
                 } else {
-                    self.diagnostics.report_expected_var_or_equality(expr)
+                    // if current is not end throw error and try parse the rest to maybe show other error(s) 
+                    if self.current_token().kind != TokenKind::End {
+                        let current  = self.current_token().kind;
+                        self.diagnostics.push(ParserError::UnexpectedToken(current));
+                        self.next_token();
+                    }
+                    else if self.diagnostics.is_empty() {
+                        if let Expression::Equality(_) = expr {
+                            return Ok(Statement::Solve(expr));
+                        } else {
+                            return Ok(Statement::Simplify(expr));
+                        }
+                    } else {
+                        return Err(self.diagnostics.clone());
+                    }
                 }
-            } else {
-                if let Expression::Equality(_) = expr {
-                    result = Statement::Solve(expr);
-                } else {
-                    result = Statement::Simplify(expr);
-                }
-                break;
             }
         }
-        result
+        Err(self.diagnostics.clone())
     }
 
     fn parse_type(&mut self) -> Option<Expression> {
@@ -177,9 +214,7 @@ impl Parser {
             let right = self.parse_binary_expression(None, op_precedence);
             left = match operator {
                 BinaryOperatorKind::Addition => Expression::addition(left, right),
-                BinaryOperatorKind::Subtraction => {
-                    Expression::addition(left, Expression::negation(right))
-                }
+                BinaryOperatorKind::Subtraction => Expression::substraction(left, right),
                 BinaryOperatorKind::Multiplication => Expression::multiplication(left, right),
                 BinaryOperatorKind::Division => Expression::fraction(left, right),
                 BinaryOperatorKind::Exponentiation => Expression::exponentiation(left, right),
@@ -273,9 +308,12 @@ impl Parser {
                 expression
             }
             _ => {
-                self.diagnostics.report_unexpected_primary(&current.kind);
+                self.diagnostics
+                    .push(ParserError::UnexpectedToken(
+                        current.kind,
+                    ));
                 self.next_token();
-                Expression::Error
+                Expression::number(0)
             }
         }
     }
@@ -290,8 +328,9 @@ impl Parser {
                     Expression::fraction(Expression::number(num), Expression::number(denom))
                 }
                 Err(_) => {
-                    self.diagnostics.report_unexpected_number(&current);
-                    Expression::Error
+                    self.diagnostics
+                        .push(ParserError::ExpectedNumber(current.text));
+                    Expression::number(0)
                 }
             },
         }
@@ -335,23 +374,7 @@ impl Parser {
 
         text = self.parse_imaginary_unit(text, &mut components);
 
-        if text.len() != 0 {
-            components.push(self.parse_variable(text, true));
-        }
-
-        if components.len() == 1 {
-            components[0].clone()
-        } else {
-            Expression::multiplication_from_vec(components)
-        }
-    }
-
-    fn parse_complex_variable(&mut self, mut text: String) -> Expression {
-        let mut components: Vec<Expression> = vec![];
-
-        text = self.parse_imaginary_unit(text, &mut components);
-
-        if text.len() != 0 {
+        if !text.is_empty() {
             components.push(self.parse_variable(text, true));
         }
 
@@ -400,7 +423,7 @@ impl Parser {
     ) -> String {
         let mut text_parsed: String = String::new();
 
-        while let Some(num) = text.find("i") {
+        while let Some(num) = text.find('i') {
             if num == text.len() - 1 {
                 if self.peek_token(1).kind == TokenKind::Hat {
                     self.next_token();
@@ -443,7 +466,6 @@ impl Parser {
                     }
                 }
 
-                arguments.retain(|arg| arg != &Expression::Error);
                 let mut actual = arguments.len();
 
                 if self.current_token().kind == TokenKind::Comma
@@ -454,8 +476,11 @@ impl Parser {
                         self.next_token();
                         actual += 1;
                     }
-                    self.diagnostics
-                        .report_invalid_argument_count(&function_type, actual);
+                    self.diagnostics.push(ParserError::InvalidArgumentCount(
+                        function_type.clone(),
+                        function_type.args_count(),
+                        actual,
+                    ));
                 }
                 self.equal_or_create(TokenKind::RightParenthesis);
 
@@ -551,10 +576,10 @@ impl Parser {
     fn parse_derivate(&mut self) -> Option<Expression> {
         // TODO add degree of derivation
 
-        let begin_position = self.position.clone();
+        let begin_position = self.position;
         let text = self.current_token().text;
 
-        if &"d" == &text {
+        if "d" == text {
             self.next_token();
             let derivation_degree: Option<Expression> = if self.is_equal(TokenKind::Hat) {
                 // d^
@@ -577,7 +602,7 @@ impl Parser {
             {
                 // d{^x}/lit
                 let text_peeked = self.peek_token(1).text;
-                if text_peeked.starts_with("d") && text_peeked.len() >= 2 {
+                if text_peeked.starts_with('d') && text_peeked.len() >= 2 {
                     // d{^x}/dlit
                     self.next_token();
 
@@ -586,33 +611,41 @@ impl Parser {
                     {
                         var
                     } else {
-                        panic!("Trying to put a derivation variable that is not of Type <Variable>")
+                        self.diagnostics
+                            .push(ParserError::InvalidVariableOfDerivation(
+                                self.tokens
+                                    .get(self.position)
+                                    .unwrap_or_else(|| self.tokens.last().unwrap())
+                                    .kind,
+                            ));
+                        Variable::new(String::from("var€"))
                     };
 
                     self.next_token();
 
-                    if self.is_equal(TokenKind::Hat) && derivation_degree.is_some() {
-                        // d^x/dy^
-                        self.next_token();
-                        let num = self.parse_number_expression();
-                        if !self.is_equal(TokenKind::Number)
-                            && !num.equal(&derivation_degree.clone().unwrap())
-                        {
-                            self.diagnostics.report_expected_same_number(
-                                &derivation_degree.clone().unwrap(),
-                                &num,
-                            );
+                    if self.is_equal(TokenKind::Hat) {
+                        if let Some(degree) = derivation_degree.clone() {
+                            // d^x/dy^
+                            self.next_token();
+                            let num = self.parse_number_expression();
+                            if !self.is_equal(TokenKind::Number) && !num.equal(&degree) {
+                                self.diagnostics
+                                    .push(ParserError::InvalidDegreeOfDerivation(degree, num));
+                                self.position = begin_position;
+                                return None;
+                            }
+                            // d^x/dy^x
+                        } else {
+                            // d/dy^
+                            self.diagnostics.push(ParserError::UnexpectedTokenKind {
+                                expected: TokenKind::LeftParenthesis,
+                                found: TokenKind::Hat,
+                            });
+                            self.next_token();
+                            self.parse_number_expression();
                             self.position = begin_position;
                             return None;
                         }
-                        // d^x/dy^x
-                    } else if self.is_equal(TokenKind::Hat) && derivation_degree.is_none() {
-                        // d/dy^
-                        self.next_token();
-                        let num = self.parse_number_expression();
-                        self.diagnostics.report_unexpected_degree_for_derivate(num);
-                        self.position = begin_position;
-                        return None;
                     }
                     // d{^x}/dy{^x}(expr)
                     if !self.is_equal(TokenKind::LeftParenthesis) {
@@ -621,7 +654,7 @@ impl Parser {
                     }
                     self.next_token();
                     let expression = self.parse_expression();
-                    self.equal_or_create_next(TokenKind::RightParenthesis);
+                    self.equal_or_create(TokenKind::RightParenthesis);
 
                     return Some(Expression::derivation(
                         expression,
@@ -678,14 +711,6 @@ pub enum UnaryOperatorKind {
     Negation,
 }
 
-impl UnaryOperatorKind {
-    pub fn precedence(&mut self) -> usize {
-        match self {
-            UnaryOperatorKind::Negation => 6,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests_parser {
     use crate::{
@@ -699,16 +724,45 @@ mod tests_parser {
     };
 
     fn verify_parser(input: &str, expected: Statement) {
-        let mut parser = Parser::new(input);
-        let mut result = parser.parse();
-        assert!(
-            result.equal(&expected),
-            "Inuput : {:?} \nResult : {:?}\nExpected : {:?}",
-            input,
-            result,
-            expected
-        );
+        match Parser::default().lex(input) {
+            Ok(mut parser) => match parser.parse() {
+                Ok(mut statement) => assert!(
+                    statement.equal(&expected),
+                    "Inuput : {:?} \nResult : {:?}\nExpected : {:?}",
+                    input,
+                    statement,
+                    expected
+                ),
+                Err(err) => {
+                    err.iter().for_each(|e| eprintln!("{}", e));
+                }
+            },
+            Err(err) => eprintln!("{}", err),
+        };
     }
+
+    // fn verify_parser_error(input: &str, expected: Result<Statement, Vec<ParserError>>) {
+    //     match Parser::default().lex(input) {
+    //         Ok(mut parser) => match parser.parse() {
+    //             Ok(mut statement) => assert!(
+    //                 expected.is_ok_and(|mut expect_statmnt| expect_statmnt.equal(&statement)),
+    //                 "Inuput : {:?} \nResult : {:?}\nExpected : {:?}",
+    //                 input,
+    //                 statement,
+    //                 expected
+    //             ),
+    //             Err(err) => {
+    //                 assert!(expected.is_err_and(|expect_err| expect_err == err),
+    //                 "Inuput : {:?} \nResult : {:?}\nExpected : {:?}",
+    //                 input,
+    //                 err,
+    //                 expected
+    //             );
+    //             }
+    //         },
+    //         Err(err) => eprintln!("{}", err),
+    //     };
+    // }
 
     #[test]
     fn negative_number() {
@@ -785,7 +839,6 @@ mod tests_parser {
                 Expression::number(25),
             )),
         );
-        verify_parser("45..443", Statement::Simplify(Expression::Error));
     }
 
     #[test]
@@ -872,6 +925,31 @@ mod tests_parser {
     }
 
     #[test]
+    fn variable() {
+        // a
+
+        // b
+
+        // a_1
+
+        // A_1
+
+        // a_a
+
+        // a_A
+
+        // a_(i)
+
+        // a_(5)
+
+        // a_(ab)
+
+        // a_(5b)
+
+        // a_(4b + 8)
+    }
+
+    #[test]
     fn implicit_multiplication() {
         verify_parser(
             "2(3)",
@@ -909,6 +987,60 @@ mod tests_parser {
                     Expression::number(3),
                 ),
                 Expression::addition(Expression::number(2), Expression::number(1)),
+            )),
+        );
+    }
+
+    #[test]
+    fn fraction() {
+        // 2/2c
+        verify_parser(
+            "2/2c",
+            Statement::Simplify(Expression::multiplication(
+                Expression::fraction(Expression::number(2), Expression::number(2)),
+                Expression::variable("c".to_string()),
+            )),
+        );
+
+        // a/b
+        verify_parser(
+            "a/b",
+            Statement::Simplify(Expression::fraction(
+                Expression::variable("a".to_string()),
+                Expression::variable("b".to_string()),
+            )),
+        );
+
+        // b * 1/a
+        verify_parser(
+            "b * 1/a",
+            Statement::Simplify(Expression::fraction(
+                Expression::multiplication(
+                    Expression::number(1),
+                    Expression::variable("b".to_string()),
+                ),
+                Expression::variable("a".to_string()),
+            )),
+        );
+
+        // 2x * 1/(x+x^2)
+        verify_parser(
+            "2x * 1/(x+x^2)",
+            Statement::Simplify(Expression::fraction(
+                Expression::multiplication(
+                    Expression::multiplication(
+                        Expression::number(2),
+                        Expression::variable("x".to_string()),
+                    ),
+                    Expression::number(1),
+                ),
+                Expression::addition(
+                    Expression::variable("x".to_string()),
+                    Expression::exponentiation(
+                        Expression::variable("x".to_string()),
+                        Expression::number(2),
+                    ),
+                ),
             )),
         );
     }

@@ -6,8 +6,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-# faer-core     = "0.9"
-# faer-lu       = "0.9"
-# faer-qr       = "0.9"
-# faer-cholesky = "0.9"
-# faer-svd      = "0.9"
+anyhow = "1.0.75"
+thiserror = "1.0.50"

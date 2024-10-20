@@ -12,10 +12,9 @@ pub mod number;
 pub mod varibale;
 
 use std::collections::HashMap;
-use std::f32::consts::E;
 use std::fmt::{Display, Formatter};
 
-use crate::solver::solve;
+use crate::solver::{solve, SolverError};
 use crate::utils::substitute;
 
 use self::addition::Addition;
@@ -37,7 +36,6 @@ pub enum Statement {
     Solve(Expression),
     SolveFor(Expression, Variable),
     Replace(Expression, Equality),
-    Error,
 }
 
 impl Statement {
@@ -82,7 +80,6 @@ impl Statement {
                     &mut memoize,
                 );
             }
-            Statement::Error => panic!("there should'nt be error in the ast"),
         }
 
         let (min_x, max_x, min_y, max_y) = position.iter().fold(
@@ -118,15 +115,14 @@ impl Statement {
         }
     }
 
-    pub fn solve(&self) -> Vec<Expression> {
+    pub fn solve(&self) -> Result<Vec<Expression>, SolverError> {
         match self.clone() {
-            Statement::Simplify(expression) => vec![expression.simplify()],
+            Statement::Simplify(expression) => Ok(vec![expression.simplify()]),
             Statement::Solve(expression) => solve(expression, None),
             Statement::SolveFor(expression, variable) => solve(expression, Some(variable)),
             Statement::Replace(expression, equality) => {
                 solve(substitute(expression, &equality), None)
             }
-            Statement::Error => vec![Expression::Error],
         }
     }
 
@@ -140,7 +136,6 @@ impl Statement {
             (Statement::Replace(expr_1, eq_1), Statement::Replace(expr_2, eq_2)) => {
                 expr_1.equal(expr_2) && eq_1.equal(eq_2)
             }
-            (Statement::Error, Statement::Error) => true,
             _ => false,
         }
     }
@@ -153,7 +148,6 @@ impl Display for Statement {
             Statement::Solve(expr) => write!(f, "{}", expr),
             Statement::SolveFor(expr, var) => write!(f, "{}, {}", expr, var),
             Statement::Replace(expr, eq) => write!(f, "{}, {}", expr, eq),
-            Statement::Error => write!(f, "Error"),
         }
     }
 }
@@ -234,7 +228,6 @@ pub enum Expression {
     Function(Box<FunctionType>),
     ImaginaryUnit,
     Derivation(Box<Derivation>),
-    Error,
 }
 
 // Helper constructor
@@ -304,7 +297,6 @@ impl Expression {
     }
 }
 
-// use generic and impl trait to reduce the following ?
 impl Expression {
     pub fn equal(&self, other: &Expression) -> bool {
         match (self, other) {
@@ -324,7 +316,7 @@ impl Expression {
             (Expression::Function(left), Expression::Function(right)) => left.equal(right),
             (Expression::Complex(left), Expression::Complex(right)) => left.equal(right),
             (Expression::ImaginaryUnit, Expression::ImaginaryUnit) => true,
-            (Expression::Error, Expression::Error) => true,
+            // (Expression::Error, Expression::Error) => true,
             (Expression::Derivation(left), Expression::Derivation(right)) => left.equal(right),
             _ => false,
         }
@@ -345,8 +337,6 @@ impl Expression {
             Expression::Complex(complex) => complex.simplify(),
             Expression::ImaginaryUnit => self,
             Expression::Derivation(derivation) => derivation.simplify(),
-
-            Expression::Error => panic!("There should be no error in the expression tree"),
         }
     }
 
@@ -365,8 +355,6 @@ impl Expression {
             Expression::Complex(complex) => complex.get_order(),
             Expression::ImaginaryUnit => 2,
             Expression::Derivation(derivation) => derivation.get_order(),
-
-            Expression::Error => panic!("There should be no error in the expression tree"),
         }
     }
 
@@ -385,8 +373,6 @@ impl Expression {
             Expression::Complex(complex) => complex.contain_vars(),
             Expression::ImaginaryUnit => None,
             Expression::Derivation(derivation) => derivation.contain_vars(),
-
-            Expression::Error => panic!("There should be no error in the expression tree"),
         }
     }
 
@@ -405,8 +391,6 @@ impl Expression {
             Expression::Complex(complex) => complex.contain_var(variable),
             Expression::ImaginaryUnit => false,
             Expression::Derivation(derivation) => derivation.contain_var(variable),
-
-            Expression::Error => panic!("There should be no error in the expression tree"),
         }
     }
 }
@@ -427,11 +411,10 @@ impl Expression {
             Expression::Function(func) => func.print_tree(span),
             Expression::Complex(complex) => complex.print_tree(span),
             Expression::ImaginaryUnit => {
-                println!("Imaginary unit")
+                println!("{}Imaginary unit", span.unwrap_or(""))
             }
             Expression::Derivation(derivation) => derivation.print_tree(span),
-
-            Expression::Error => println!("{}Error", span.unwrap_or("")),
+            // Expression::Error => println!("{}Error", span.unwrap_or("")),
         }
     }
 
@@ -440,6 +423,8 @@ impl Expression {
 
         // memoize (length, height, above_height)
         let mut memoize: HashMap<Expression, (i8, i8, i8)> = HashMap::new();
+
+        // println!("{:?}", self);
 
         self.calc_pos(&mut position, State::Same(0, 0), &mut memoize);
 
@@ -451,6 +436,8 @@ impl Expression {
         );
 
         let mut grid = HashMap::new();
+
+        // println!("{:?}", position);
 
         // Populate the grid with characters
         for (character, (y, x)) in position {
@@ -494,13 +481,9 @@ impl Expression {
             Expression::Negation(neg) => neg.calc_pos(position, prev_state, memoized),
             Expression::Function(func) => func.calc_pos(position, prev_state, memoized),
             Expression::Complex(complex) => complex.calc_pos(position, prev_state, memoized),
-            Expression::ImaginaryUnit => position.push(("i".into(), prev_state.get_pos())),
+            Expression::ImaginaryUnit => position.push((String::from("i"), prev_state.get_pos())),
             Expression::Derivation(derivation) => {
                 derivation.calc_pos(position, prev_state, memoized)
-            }
-
-            Expression::Error => {
-                println!("Error");
             }
         }
     }
@@ -525,10 +508,6 @@ impl Expression {
             Expression::Complex(complex) => complex.get_length(memoized),
             Expression::ImaginaryUnit => 1,
             Expression::Derivation(derivation) => derivation.get_length(memoized),
-
-            Expression::Error => {
-                panic!("There should be no error in the expression tree");
-            }
         };
 
         if let Some((l, _h, _ah)) = memoized.get_mut(self) {
@@ -559,10 +538,6 @@ impl Expression {
             Expression::Complex(complex) => complex.get_height(memoized),
             Expression::ImaginaryUnit => 1,
             Expression::Derivation(derivation) => derivation.get_height(memoized),
-
-            Expression::Error => {
-                panic!("There should be no error in the expression tree");
-            }
         };
 
         if let Some((_l, h, _ah)) = memoized.get_mut(self) {
@@ -597,8 +572,6 @@ impl Expression {
             Expression::Complex(complex) => complex.get_above_height(memoized),
             Expression::ImaginaryUnit => 1,
             Expression::Derivation(derivation) => derivation.get_above_height(memoized),
-
-            Expression::Error => panic!("There should be no error in the expression tree"),
         };
 
         if let Some((_l, _h, ah)) = memoized.get_mut(self) {
@@ -656,7 +629,6 @@ impl Expression {
             Expression::Derivation(derivation) => {
                 derivation.make_parenthesis(pos_y, pos_x, position, right, memoized)
             }
-            Expression::Error => panic!("There should be no error in the expression tree"),
         }
     }
 }
@@ -742,8 +714,7 @@ impl Display for Expression {
             Expression::Complex(complex) => write!(f, "{}", complex),
             Expression::ImaginaryUnit => write!(f, "i"),
             Expression::Derivation(derivation) => write!(f, "{}", derivation),
-
-            Expression::Error => write!(f, "Error"),
+            // Expression::Error => write!(f, "Error"),
         }
     }
 }
@@ -2151,11 +2122,95 @@ mod test_simplify {
             Expression::variable(String::from("x"))
         )));
 
-        // // d/dx(x * a^x)
+        // d/dx(x * a^x)
+        assert!(Expression::derivation(
+            Expression::multiplication(
+                Expression::variable(String::from("x")),
+                Expression::exponentiation(
+                    Expression::variable(String::from("a")),
+                    Expression::variable(String::from("x"))
+                )
+            ),
+            Variable::new(String::from("x")),
+            Some(Expression::number(1))
+        )
+        .simplify()
+        .equal(&Expression::addition(
+            Expression::multiplication(
+                Expression::variable(String::from("a")),
+                Expression::exponentiation(
+                    Expression::variable(String::from("a")),
+                    Expression::variable(String::from("x"))
+                )
+            ),
+            Expression::exponentiation(
+                Expression::variable(String::from("a")),
+                Expression::variable(String::from("x"))
+            )
+        )));
 
-        // // d/dx(x * a^x * e^x)
+        // d/dx(x * a^x * e^x)
+        assert!(Expression::derivation(
+            Expression::multiplication(
+                Expression::multiplication(
+                    Expression::variable(String::from("x")),
+                    Expression::exponentiation(
+                        Expression::variable(String::from("a")),
+                        Expression::variable(String::from("x"))
+                    )
+                ),
+                Expression::exponentiation(
+                    Expression::Constant(ConstantKind::E),
+                    Expression::variable(String::from("x"))
+                )
+            ),
+            Variable::new(String::from("x")),
+            Some(Expression::number(1))
+        )
+        .simplify()
+        .equal(&Expression::addition(
+            Expression::multiplication(
+                Expression::variable(String::from("a")),
+                Expression::exponentiation(
+                    Expression::variable(String::from("a")),
+                    Expression::variable(String::from("x"))
+                )
+            ),
+            Expression::multiplication(
+                Expression::Constant(ConstantKind::E),
+                Expression::exponentiation(
+                    Expression::Constant(ConstantKind::E),
+                    Expression::variable(String::from("x"))
+                )
+            )
+        )));
 
-        // // d/dx(x/ln(x))
+        // d/dx(x/ln(x))
+        assert!(Expression::derivation(
+            Expression::fraction(
+                Expression::variable(String::from("x")),
+                Expression::function(FunctionType::Predefined(
+                    PredefinedFunction::Ln,
+                    vec![Expression::variable(String::from("x"))]
+                ))
+            ),
+            Variable::new(String::from("x")),
+            Some(Expression::number(1))
+        )
+        .simplify()
+        .equal(&Expression::fraction(
+            Expression::addition(
+                Expression::number(1),
+                Expression::negation(Expression::function(FunctionType::Predefined(
+                    PredefinedFunction::Ln,
+                    vec![Expression::variable(String::from("x"))]
+                )))
+            ),
+            Expression::function(FunctionType::Predefined(
+                PredefinedFunction::Ln,
+                vec![Expression::variable(String::from("x"))]
+            ))
+        )));
 
         // d/dx(x/8)
         assert!(Expression::derivation(
@@ -2211,67 +2266,82 @@ mod test_simplify {
             Expression::number(4)
         )));
 
-        // // d/dx(1/(x + 2)^2)
-        // assert!(Expression::derivation(
-        //     Expression::fraction(
-        //         Expression::number(1),
-        //         Expression::exponentiation(
-        //             Expression::addition(
-        //                 Expression::variable(String::from("x")),
-        //                 Expression::number(2)
-        //             ),
-        //             Expression::number(2)
-        //         )
-        //     ),
-        //     Variable::new(String::from("x")),
-        //     Some(Expression::number(1))
-        // )
-        // .simplify()
-        // .equal(&Expression::fraction(
-        //     Expression::number(-2),
-        //     Expression::exponentiation(
-        //         Expression::addition(
-        //             Expression::variable(String::from("x")),
-        //             Expression::number(2)
-        //         ),
-        //         Expression::number(3)
-        //     )
-        // )));
+        // d/dx(1/(x + 2)^2)
+        assert!(Expression::derivation(
+            Expression::fraction(
+                Expression::number(1),
+                Expression::exponentiation(
+                    Expression::addition(
+                        Expression::variable(String::from("x")),
+                        Expression::number(2)
+                    ),
+                    Expression::number(2)
+                )
+            ),
+            Variable::new(String::from("x")),
+            Some(Expression::number(1))
+        )
+        .simplify()
+        .equal(&Expression::fraction(
+            Expression::number(-2),
+            Expression::exponentiation(
+                Expression::addition(
+                    Expression::variable(String::from("x")),
+                    Expression::number(2)
+                ),
+                Expression::number(3)
+            )
+        )));
 
-        // // d/dx((x + 2)^(a + 4))
-        // assert!(Expression::derivation(
-        //     Expression::exponentiation(
-        //         Expression::addition(
-        //             Expression::variable(String::from("x")),
-        //             Expression::number(2)
-        //         ),
-        //         Expression::addition(
-        //             Expression::variable(String::from("a")),
-        //             Expression::number(4)
-        //         )
-        //     ),
-        //     Variable::new(String::from("x")),
-        //     Some(Expression::number(1))
-        // )
-        // .simplify()
-        // .equal(&Expression::multiplication(
-        //     Expression::addition(
-        //         Expression::variable(String::from("a")),
-        //         Expression::number(4)
-        //     ),
-        //     Expression::exponentiation(
-        //         Expression::addition(
-        //             Expression::variable(String::from("x")),
-        //             Expression::number(2)
-        //         ),
-        //         Expression::addition(
-        //             Expression::variable(String::from("a")),
-        //             Expression::number(3)
-        //         )
-        //     )
-        // )));
+        // d/dx((x + 2)^-2)
+
+        // d/dx((x + 2)^(a + 4))
+        assert!(Expression::derivation(
+            Expression::exponentiation(
+                Expression::addition(
+                    Expression::variable(String::from("x")),
+                    Expression::number(2)
+                ),
+                Expression::addition(
+                    Expression::variable(String::from("a")),
+                    Expression::number(4)
+                )
+            ),
+            Variable::new(String::from("x")),
+            Some(Expression::number(1))
+        )
+        .simplify()
+        .equal(&Expression::multiplication(
+            Expression::addition(
+                Expression::variable(String::from("a")),
+                Expression::number(4)
+            ),
+            Expression::exponentiation(
+                Expression::addition(
+                    Expression::variable(String::from("x")),
+                    Expression::number(2)
+                ),
+                Expression::addition(
+                    Expression::variable(String::from("a")),
+                    Expression::number(3)
+                )
+            )
+        )));
 
         // d/dx(ln(x))
+        assert!(Expression::derivation(
+            Expression::function(FunctionType::Predefined(
+                PredefinedFunction::Ln,
+                vec![Expression::variable(String::from("x"))]
+            )),
+            Variable::new(String::from("x")),
+            Some(Expression::number(1))
+        )
+        .simplify()
+        .equal(&Expression::fraction(
+            Expression::number(1),
+            Expression::variable(String::from("x"))
+        )));
 
         // d/dx(sin(x))
 

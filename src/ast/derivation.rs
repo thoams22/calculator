@@ -1,4 +1,5 @@
 use crate::ast::State;
+use crate::utils::is_chain_rule_applicable;
 use std::fmt::Display;
 
 use crate::ast::Expr;
@@ -78,6 +79,10 @@ impl Expr for Derivation {
     }
 
     fn simplify(mut self) -> Expression {
+        if self.simplified {
+            return Expression::Derivation(Box::new(self));
+        }
+
         if self.get_derivation_degree().sub_expr > 1 {
             let mut expr = self.get_expression();
             for _ in 0..self.get_derivation_degree().sub_expr {
@@ -140,6 +145,12 @@ impl Expr for Derivation {
             ))
             .simplify(),
             Expression::Function(_) => todo!(),
+            Expression::Derivation(expr) => Expression::derivation(
+                expr.simplify(),
+                self.derivation_variable,
+                Some(Expression::number(1)),
+            )
+            .simplify(),
             _ => Expression::Derivation(Box::new(self)),
         }
     }
@@ -197,7 +208,7 @@ impl Expr for Derivation {
                     + if self.get_derivation_degree().sub_expr == 1 {
                         0
                     } else {
-                        self.derivation_degree.get_length(memoized)
+                        self.derivation_degree.get_height(memoized)
                     },
                 pos_x,
             ),
@@ -238,14 +249,14 @@ impl Expr for Derivation {
             );
         }
 
-        pos_x += frac_bar_len / 2;
         d.calc_pos(position, State::Over(pos_y + 1, pos_x), memoized);
         if self.derivation_degree.sub_expr > 1 {
             self.derivation_degree
                 .calc_pos(position, State::Over(pos_y + 2, pos_x + 1), memoized);
         }
 
-        pos_x += frac_bar_len / 2;
+        pos_x += frac_bar_len;
+
         self.get_expression()
             .make_parenthesis(&mut pos_y, &mut pos_x, position, false, memoized);
         self.get_expression()
@@ -298,23 +309,22 @@ impl Expr for Derivation {
         &self,
         memoized: &mut std::collections::HashMap<Expression, (i8, i8, i8)>,
     ) -> i8 {
-        //  x           | if x > 1
+        //  x           | 1 if x > 1
         // d            | 1 if expr == 1
         // -----(expr)  |
         //     x
         // dvar
-        let base_height = match self.get_expression().get_height(memoized) {
-            1 => 2,
-            x if x > 1 => x,
-            _ => panic!("Error in get_height derivation"),
-        };
-
-        base_height
-            + if self.derivation_degree.sub_expr == 1 {
-                0
-            } else {
-                self.derivation_degree.get_height(memoized)
+        match self.get_expression().get_height(memoized) {
+            1 | 2 => {
+                2 + if self.derivation_degree.sub_expr == 1 {
+                    0
+                } else {
+                    1
+                }
             }
+            x if x > 2 => x,
+            _ => panic!("Error in get_above_height derivation"),
+        }
     }
 }
 
@@ -360,7 +370,7 @@ impl Derivation {
         });
 
         if let Some(expr) = first {
-            if constant.len() >= 1 {
+            if !constant.is_empty() {
                 Expression::multiplication(expr, Expression::multiplication_from_vec(constant))
                     .simplify()
             } else {
@@ -377,34 +387,66 @@ impl Derivation {
             expo.get_exponent().contain_var(&self.derivation_variable),
         ) {
             (true, true) => {
-                Expression::Derivation(Box::new(self));
                 todo!("Not supported yet")
             }
             (true, false) => {
-
-                Expression::multiplication(
-                expo.get_exponent(),
-                Expression::exponentiation(
-                    expo.get_base(),
-                    Expression::addition(
-                        expo.get_exponent(),
-                        Expression::number(-1),
+                let derivate = Expression::multiplication(
+                    expo.get_exponent(),
+                    Expression::exponentiation(
+                        expo.get_base(),
+                        Expression::addition(expo.get_exponent(), Expression::number(-1)),
                     ),
-                ),
-            )
-            .simplify()},
+                );
+                if is_chain_rule_applicable(expo.get_base()) {
+                    Expression::multiplication(
+                        Expression::derivation(
+                            expo.get_base(),
+                            self.derivation_variable.clone(),
+                            Some(Expression::number(1)),
+                        ),
+                        derivate.clone(),
+                    )
+                    .simplify()
+                } else {
+                    derivate.simplify()
+                }
+            }
             (false, true) => {
                 if let Expression::Constant(ConstantKind::E) = expo.get_base() {
-                    Expression::Derivation(Box::new(self))
+                    if is_chain_rule_applicable(expo.get_exponent()) {
+                        Expression::multiplication(
+                            Expression::derivation(
+                                expo.get_exponent(),
+                                self.derivation_variable.clone(),
+                                Some(Expression::number(1)),
+                            ),
+                            self.sub_expr,
+                        )
+                        .simplify()
+                    } else {
+                        self.sub_expr
+                    }
                 } else {
-                    Expression::multiplication(
+                    let derivate = Expression::multiplication(
                         self.get_expression(),
                         Expression::function(FunctionType::Predefined(
                             PredefinedFunction::Ln,
                             vec![expo.get_base()],
                         )),
-                    )
-                    .simplify()
+                    );
+                    if is_chain_rule_applicable(expo.get_exponent()) {
+                        Expression::multiplication(
+                            derivate,
+                            Expression::derivation(
+                                expo.get_exponent(),
+                                self.derivation_variable,
+                                None,
+                            ),
+                        )
+                        .simplify()
+                    } else {
+                        derivate.simplify()
+                    }
                 }
             }
             (false, false) => Expression::number(0),
@@ -417,6 +459,7 @@ impl Derivation {
             frac.get_denominator()
                 .contain_var(&self.derivation_variable),
         ) {
+            // d/dx(f/g) = (d/dx(f)*g - d/dx(g)*f) / g^2
             (true, true) => Expression::fraction(
                 Expression::substraction(
                     Expression::multiplication(
@@ -439,8 +482,11 @@ impl Derivation {
                 Expression::exponentiation(frac.get_denominator(), Expression::number(2)),
             )
             .simplify(),
-            (true, false) => {
-                Expression::multiplication(
+
+            // d/dx(f/a) = d/dx(f)/a
+            // where a is a constant
+            // where f is a function dependant of x
+            (true, false) => Expression::multiplication(
                 Expression::derivation(
                     frac.get_numerator(),
                     self.derivation_variable,
@@ -448,15 +494,21 @@ impl Derivation {
                 ),
                 Expression::fraction(Expression::number(1), frac.get_denominator()),
             )
-            .simplify()},
-            (false, true) => Expression::multiplication(
+            .simplify(),
+            // d/dx(a/f) = -a * d/dx(f)/f^2
+            // where a is a constant
+            // where f is a function dependant of x
+            (false, true) => Expression::negation(Expression::multiplication(
                 frac.get_numerator(),
-                Expression::derivation(
-                    Expression::exponentiation(frac.get_denominator(), Expression::number(-1)),
-                    self.derivation_variable,
-                    Some(Expression::number(1)),
+                Expression::fraction(
+                    Expression::derivation(
+                        frac.get_denominator(),
+                        self.derivation_variable.clone(),
+                        Some(Expression::number(1)),
+                    ),
+                    Expression::exponentiation(frac.get_denominator(), Expression::number(2)),
                 ),
-            )
+            ))
             .simplify(),
             (false, false) => Expression::number(0),
         }

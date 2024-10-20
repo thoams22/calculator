@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::{arch::x86_64::_rdrand16_step, collections::HashMap};
 
 use crate::ast::Expression;
 
-use super::{addition::Addition, Expr, State, varibale::Variable};
+use super::{addition::Addition, varibale::Variable, Expr, State};
 
 #[derive(PartialEq, Debug, Clone, Hash, Eq)]
 pub struct Multiplication {
@@ -58,10 +58,11 @@ impl Expr for Multiplication {
         for expression in self.sub_expr.iter_mut() {
             *expression = expression.clone().simplify();
         }
+
         self.regroup_nested_multiplication()
             .multiplication() // Mult(a, a) -> Exp(a, 2)
-            .multiplication_on_sum() // Mult(Add(4, 2), Add(8, 3)) -> 66
             .multiplication_fraction() // Mult(1/2, 2) -> 1, Mult(1/2, 2/3) -> 1/3
+            .multiplication_on_sum() // Mult(Add(4, 2), Add(8, 3)) -> 66
             .multiplication_number() // Mult(8, 3, 2, 4) -> 192, Mult(a, 1) -> a , Mult(a, 0) -> 0
     }
 
@@ -82,7 +83,8 @@ impl Expr for Multiplication {
             None
         } else {
             Some(map)
-        }    }
+        }
+    }
 
     fn contain_var(&self, variable: &super::varibale::Variable) -> bool {
         self.sub_expr.iter().any(|expr| expr.contain_var(variable))
@@ -90,10 +92,10 @@ impl Expr for Multiplication {
 
     fn get_order(&self) -> i64 {
         self.sub_expr
-        .iter()
-        .map(|expr| expr.get_order())
-        .max()
-        .unwrap_or(0)
+            .iter()
+            .map(|expr| expr.get_order())
+            .max()
+            .unwrap_or(0)
     }
 
     fn print_tree(&self, span: Option<&str>) {
@@ -168,7 +170,10 @@ impl Expr for Multiplication {
         max_height
     }
 
-    fn get_above_height(&self, memoized: &mut std::collections::HashMap<Expression, (i8, i8, i8)>) -> i8 {
+    fn get_above_height(
+        &self,
+        memoized: &mut std::collections::HashMap<Expression, (i8, i8, i8)>,
+    ) -> i8 {
         let mut max_height = 0;
         for expr in &self.sub_expr {
             max_height = max_height.max(expr.get_above_height(memoized));
@@ -224,7 +229,6 @@ impl Multiplication {
         for expr in self.sub_expr.iter_mut() {
             *expr = expr.clone().simplify();
         }
-
         self
     }
 
@@ -245,17 +249,14 @@ impl Multiplication {
 
                 self.sub_expr.swap_remove(i);
 
-                return Multiplication::new(
-                    Expression::number(1),
-                    Expression::fraction(
-                        Expression::multiplication(
-                            Expression::multiplication_from_vec(self.sub_expr.clone()),
-                            numerator,
-                        ),
-                        denominator,
-                    )
-                    .simplify(),
-                );
+                return Multiplication::from_vec(vec![Expression::fraction(
+                    Expression::multiplication(
+                        Expression::multiplication_from_vec(self.sub_expr.clone()),
+                        numerator,
+                    ),
+                    denominator,
+                )
+                .simplify()]);
             } else {
                 i += 1;
             }
