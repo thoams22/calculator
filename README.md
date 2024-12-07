@@ -1,4 +1,4 @@
-In Progress
+Abandoned
 
 This repo aim to be a computer algebra systems/do symbolic computation.
 It is not intended to be optimized as i do not currently have the knowledge to do so.
